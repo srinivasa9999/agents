@@ -1,0 +1,85 @@
+# =============================================================================
+# Market monitor configuration
+# Edit this file to change watch levels, thresholds and keywords.
+# No code changes needed - the function reads this file fresh on every run.
+# =============================================================================
+
+market_hours:
+  start: "09:15"
+  end: "15:30"
+  timezone: "Asia/Kolkata"
+
+# Instruments to poll. `kite_symbol` must match Kite's quote/ltp format
+# ("EXCHANGE:TRADINGSYMBOL"). NIFTY 50 and NIFTY BANK are NSE indices.
+symbols:
+  NIFTY:
+    kite_symbol: "NSE:NIFTY 50"
+    # Each level is checked independently. `label` is free text used in the
+    # alert message. Add/remove/edit as many as you like.
+    watch_levels:
+      - label: "Support S1"
+        price: 24500
+      - label: "Resistance R1"
+        price: 24900
+      - label: "My 24800 CE strike"
+        price: 24800
+  BANKNIFTY:
+    kite_symbol: "NSE:NIFTY BANK"
+    watch_levels:
+      - label: "Support S1"
+        price: 51500
+      - label: "Resistance R1"
+        price: 52500
+
+# Minimum points the price must move back across a level before that level
+# can trigger again. Prevents rapid re-alerting when price oscillates right
+# at the line.
+level_cross_hysteresis_points: 5
+
+vix:
+  kite_symbol: "NSE:INDIA VIX"
+  # Alert when VIX moves more than this % from the first reading of the day.
+  intraday_move_pct_threshold: 5.0
+
+positions:
+  # Which checks to apply to each open position from kite.positions()["net"].
+  # All enabled checks are evaluated independently per position.
+  pnl_absolute_enabled: true
+  pnl_absolute_threshold_rupees: 5000
+
+  pnl_percentage_enabled: true
+  # % of (average_price * quantity) magnitude.
+  pnl_percentage_threshold: 20
+
+  ltp_move_enabled: true
+  # % move of LTP away from your average entry price.
+  ltp_move_pct_threshold: 15
+
+news:
+  enabled: true
+  keywords:
+    - "Iran"
+    - "Israel"
+    - "Hormuz"
+    - "Fed"
+    - "FOMC"
+    - "RBI"
+    - "ceasefire"
+    - "crude"
+    - "war"
+    - "missile"
+    - "sanctions"
+  # Free public RSS feeds. Add/remove as you like - no API key required.
+  feeds:
+    - "https://www.moneycontrol.com/rss/marketreports.xml"
+    - "https://www.moneycontrol.com/rss/economy.xml"
+    - "https://feeds.feedburner.com/ndtvprofit-latest"
+    - "https://www.livemint.com/rss/markets"
+    - "https://www.business-standard.com/rss/markets-106.rss"
+  # Ignore headlines older than this (avoids re-alerting on backfilled feed items).
+  max_headline_age_hours: 12
+
+alerting:
+  # Minimum minutes between two alerts for the *same* condition, even if the
+  # crossing/state-change logic would otherwise re-fire (defense in depth).
+  cooldown_minutes: 15
