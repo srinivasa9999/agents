@@ -81,8 +81,8 @@ def check_news(news_config: dict, state_store: StateStore) -> list[Alert]:
                 threshold=", ".join(keywords),
                 detail=f"{title}\n{link}" if link else title,
                 timestamp=datetime.now(tz=IST),
+                on_delivered=lambda hid=headline_id: state_store.mark_headline_seen(hid),
             ))
-            state_store.mark_headline_seen(headline_id)
 
     try:
         state_store.prune_old_headlines(older_than_days=7)

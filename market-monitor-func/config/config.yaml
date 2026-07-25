@@ -76,6 +76,11 @@ news:
     - "https://feeds.feedburner.com/ndtvprofit-latest"
     - "https://www.livemint.com/rss/markets"
     - "https://www.business-standard.com/rss/markets-106.rss"
+    - "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms"
+    - "https://www.aljazeera.com/xml/rss/all.xml"
+    - "http://feeds.bbci.co.uk/news/world/rss.xml"
+    - "http://feeds.bbci.co.uk/news/business/rss.xml"
+    - "https://www.cnbc.com/id/100727362/device/rss/rss.html"
   # Ignore headlines older than this (avoids re-alerting on backfilled feed items).
   max_headline_age_hours: 12
 

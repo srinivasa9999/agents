@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -11,3 +12,8 @@ class Alert:
     threshold: str
     detail: str = ""
     timestamp: datetime | None = None
+    # Called once this alert is *confirmed delivered* to Telegram. This is how
+    # "seen"/"tripped"/"last_alert_at" state gets persisted - deliberately not
+    # done at alert-creation time, so a failed send doesn't get silently
+    # marked as handled (see send_alerts in telegram_notify.py).
+    on_delivered: Callable[[], None] | None = None

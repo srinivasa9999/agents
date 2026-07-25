@@ -3,6 +3,8 @@ from types import SimpleNamespace
 
 from shared import news_check
 
+from .conftest import deliver
+
 NEWS_CONFIG = {
     "enabled": True,
     "keywords": ["Iran", "RBI"],
@@ -54,7 +56,7 @@ def test_already_seen_headline_not_repeated(state_store, monkeypatch):
     entries = [_fake_entry("RBI hikes repo rate", "https://example.com/3")]
     _patch_feed(monkeypatch, entries)
 
-    first = news_check.check_news(NEWS_CONFIG, state_store)
+    first = deliver(news_check.check_news(NEWS_CONFIG, state_store))
     second = news_check.check_news(NEWS_CONFIG, state_store)
     assert len(first) == 1
     assert second == []

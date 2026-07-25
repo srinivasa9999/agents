@@ -43,3 +43,14 @@ class FakeStateStore:
 @pytest.fixture
 def state_store():
     return FakeStateStore()
+
+
+def deliver(alerts):
+    """Simulate telegram_notify.send_alerts confirming delivery of each
+    alert, so tests that chain multiple ticks see the same state
+    progression production would (state is only persisted via
+    Alert.on_delivered, not at alert-creation time)."""
+    for alert in alerts:
+        if alert.on_delivered:
+            alert.on_delivered()
+    return alerts

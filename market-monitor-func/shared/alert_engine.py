@@ -60,8 +60,8 @@ def check_level_crossings(
                 threshold=f"{price:,.2f}",
                 detail=f"{symbol_name} {direction} level '{label}' ({price:,.2f})",
                 timestamp=datetime.now(tz=IST),
+                on_delivered=lambda ck=condition_key, s=side_now: state_store.record_alert_sent(ck, side=s),
             ))
-            state_store.record_alert_sent(condition_key, side=side_now)
         else:
             logger.info("Level cross for %s suppressed by cooldown", condition_key)
             state_store.set_alert_state(condition_key, side=side_now)
@@ -103,8 +103,10 @@ def check_vix_move(
                 threshold=f"{threshold_pct:.1f}% (from day open {reference_value:.2f})",
                 detail=f"India VIX {direction} {abs(pct_move):.1f}% from today's first reading ({reference_value:.2f} -> {current_vix:.2f})",
                 timestamp=datetime.now(tz=IST),
+                on_delivered=lambda: state_store.record_alert_sent(
+                    condition_key, reference_date=today, reference_value=reference_value, tripped=True,
+                ),
             ))
-            state_store.record_alert_sent(condition_key, reference_date=today, reference_value=reference_value, tripped=True)
         else:
             state_store.set_alert_state(condition_key, reference_date=today, reference_value=reference_value, tripped=True)
     elif abs(pct_move) < threshold_pct and tripped_prev:
@@ -203,7 +205,6 @@ def _check_magnitude(
 
     if breached and not tripped_prev:
         if state_store.cooldown_elapsed(condition_key, cooldown_minutes):
-            state_store.record_alert_sent(condition_key, tripped=True)
             return [Alert(
                 condition_key=condition_key,
                 category=category,
@@ -212,6 +213,7 @@ def _check_magnitude(
                 threshold=threshold,
                 detail=detail,
                 timestamp=datetime.now(tz=IST),
+                on_delivered=lambda: state_store.record_alert_sent(condition_key, tripped=True),
             )]
         state_store.set_alert_state(condition_key, tripped=True)
     elif not breached and tripped_prev:
