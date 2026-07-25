@@ -1,0 +1,23 @@
+{
+  "_warning": "NSE does not publish a machine-readable holiday API, and public holiday-list pages could not be fetched programmatically to verify (they block automated requests). The dates below are the ones we could confirm with reasonable confidence (fixed-date national holidays, or dates found in a live web search). Several NSE holidays follow the lunar/Hindu/Islamic calendars and shift every year (Holi, Ram Navami, Eid, Ganesh Chaturthi, Dussehra, Diwali, Guru Nanak Jayanti, etc.) - those are NOT included and must be added manually. Before relying on this file, cross-check and complete it against NSE's official circular, published every December for the following year, at https://www.nseindia.com/resources/exchange-communication-holidays",
+  "_last_verified": "2026-07-24",
+  "unconfirmed_variable_holidays_todo": [
+    "Holi",
+    "Ram Navami",
+    "Mahavir Jayanti",
+    "Eid al-Fitr",
+    "Bakri Id / Eid al-Adha",
+    "Ganesh Chaturthi",
+    "Dussehra (Vijaya Dashami)",
+    "Diwali Balipratipada",
+    "Guru Nanak Jayanti"
+  ],
+  "holidays": [
+    { "date": "2026-01-26", "name": "Republic Day" },
+    { "date": "2026-04-03", "name": "Good Friday" },
+    { "date": "2026-05-01", "name": "Maharashtra Din" },
+    { "date": "2026-06-26", "name": "Muharram" },
+    { "date": "2026-10-02", "name": "Gandhi Jayanti" },
+    { "date": "2026-12-25", "name": "Christmas" }
+  ]
+}

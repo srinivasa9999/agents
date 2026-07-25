@@ -1,0 +1,20 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "<storage account connection string - also used as the state store>",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+
+    "TimerSchedule": "0 */5 * * * *",
+
+    "KITE_API_KEY": "<your kite connect api_key>",
+    "KITE_STATE_TABLE": "KiteAuthState",
+    "ALERT_STATE_TABLE": "AlertState",
+    "NEWS_SEEN_TABLE": "SeenHeadlines",
+
+    "TELEGRAM_BOT_TOKEN": "<token from @BotFather>",
+    "TELEGRAM_CHAT_ID": "<your numeric chat id>",
+
+    "CONFIG_PATH": "config/config.yaml",
+    "HOLIDAYS_PATH": "data/nse_holidays.json"
+  }
+}

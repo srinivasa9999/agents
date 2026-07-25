@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+local.settings.json
+.env
+.python_packages/
+bin/
+obj/
+.vscode/
+*.log
