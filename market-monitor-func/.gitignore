@@ -4,6 +4,7 @@ __pycache__/
 venv/
 local.settings.json
 .env
+.kite_env
 .python_packages/
 bin/
 obj/
