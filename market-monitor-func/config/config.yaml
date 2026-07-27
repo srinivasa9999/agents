@@ -36,6 +36,17 @@ symbols:
 # at the line.
 level_cross_hysteresis_points: 5
 
+pivot_levels:
+  # If true, auto-computed classic pivot points (P/R1-R3/S1-S3, from the
+  # previous trading day's H/L/C) are merged in alongside the manual
+  # watch_levels above for NIFTY/BANKNIFTY. Computed daily by
+  # scripts/daily_kite_login.py on your VM and read from Table Storage at
+  # alert time - no redeploy needed to pick up a new day's levels.
+  # Requires Zerodha's paid Historical API add-on; if that's not enabled on
+  # your Kite Connect app, this has no effect and only watch_levels above
+  # are used.
+  enabled: true
+
 vix:
   kite_symbol: "NSE:INDIA VIX"
   # Alert when VIX moves more than this % from the first reading of the day.

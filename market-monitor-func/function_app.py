@@ -40,6 +40,7 @@ def _get_state_store() -> StateStore:
         kite_table=os.environ.get("KITE_STATE_TABLE", "KiteAuthState"),
         alert_table=os.environ.get("ALERT_STATE_TABLE", "AlertState"),
         news_table=os.environ.get("NEWS_SEEN_TABLE", "SeenHeadlines"),
+        pivot_table=os.environ.get("PIVOT_LEVELS_TABLE", "PivotLevels"),
     )
 
 
@@ -139,15 +140,26 @@ def _run_kite_checks(kite: ReadOnlyKite, config: dict, cooldown_minutes: int, st
         logger.exception("Failed to fetch index quotes")
         quotes = {}
 
+    pivot_levels_enabled = config.get("pivot_levels", {}).get("enabled", True)
+
     for symbol_name, symbol_config in symbols_config.items():
         quote = quotes.get(symbol_config["kite_symbol"])
         if not quote:
             logger.warning("No quote returned for %s (%s)", symbol_name, symbol_config["kite_symbol"])
             continue
+
+        levels = list(symbol_config.get("watch_levels", []))
+        if pivot_levels_enabled:
+            pivot_levels = state_store.get_pivot_levels(symbol_name)
+            if pivot_levels:
+                levels.extend(pivot_levels)
+            else:
+                logger.info("No auto-computed pivot levels available yet for %s", symbol_name)
+
         alerts.extend(check_level_crossings(
             symbol_name=symbol_name,
             current_price=quote["last_price"],
-            levels=symbol_config.get("watch_levels", []),
+            levels=levels,
             hysteresis_points=hysteresis,
             cooldown_minutes=cooldown_minutes,
             state_store=state_store,

@@ -53,11 +53,16 @@ market-monitor-func/
 │   ├── kite_auth.py           Reads (never generates) a Kite session
 │   ├── market_data.py         Read-only Kite quote/positions wrapper
 │   ├── alert_engine.py        Level-cross / VIX / position threshold logic + cooldown
+│   ├── pivot_points.py        Classic pivot point formula (pure math, no I/O)
 │   ├── news_check.py          RSS keyword scan with new-headline dedup
 │   ├── telegram_notify.py     Telegram Bot API sender
 │   └── state_store.py         Azure Table Storage persistence
-├── scripts/daily_kite_login.py  Runs on YOUR VM, not in the Function
-└── tests/                      pytest unit tests for the logic above
+├── scripts/daily_kite_login.py       Raw-HTTP login (VM, not the Function) -
+│                                      also computes/stores daily pivot levels
+├── scripts/playwright_kite_login.py  What kite_login_cron_wrapper.sh (the
+│                                      actual daily cron) runs - same login +
+│                                      pivot computation, via a real browser
+└── tests/                           pytest unit tests for the logic above
 ```
 
 ---
@@ -107,7 +112,27 @@ Two login modes, pick one:
 Either way, `api_secret` and your Kite password/TOTP secret **never touch
 the Function App** - only `api_key` does.
 
-## 3. Configure your watch levels/thresholds
+## 3. Auto-computed pivot levels (optional, extra cost)
+
+Both login scripts - `daily_kite_login.py` and `playwright_kite_login.py`
+(whichever your cron actually runs; see [§10](#10-daily-kite-login-script-on-your-vm))
+- compute classic floor-trader pivot
+points (P, R1-R3, S1-S3) for NIFTY and BANKNIFTY from the previous trading
+day's high/low/close, right after minting today's access token, and write
+them to the `PIVOT_LEVELS_TABLE` table (default `PivotLevels`). The Function
+App merges these in alongside your manual `watch_levels` at alert time (see
+`pivot_levels.enabled` in `config/config.yaml`) - no redeploy needed for a
+new day's levels to take effect.
+
+**This needs Zerodha's Historical API add-on**, a separate paid subscription
+on top of the base Kite Connect API plan (`kite.historical_data()` fails
+without it). If you don't have it enabled, the pivot step logs a warning and
+is skipped - it does not fail the login itself, and the function falls back
+to just your manual `watch_levels`. Decide whether the add-on is worth it
+before relying on this; otherwise keep hand-setting support/resistance in
+`config.yaml` as before.
+
+## 4. Configure your watch levels/thresholds
 
 Edit `config/config.yaml`:
 - `symbols.NIFTY.watch_levels` / `symbols.BANKNIFTY.watch_levels` — your support/resistance/strike levels.
@@ -119,7 +144,7 @@ Edit `config/config.yaml`:
 This file ships with placeholder example levels — **replace them with your
 real numbers before relying on this.**
 
-## 4. NSE holidays - incomplete by design, verify before relying on it
+## 5. NSE holidays - incomplete by design, verify before relying on it
 
 `data/nse_holidays.json` includes only the fixed-date national holidays we
 could confirm (Republic Day, Good Friday, Maharashtra Din, Muharram 2026,
@@ -134,7 +159,7 @@ function runs unattended for an extended period. Missing a holiday means
 the function evaluates stale/closed-market prices during that window, not
 a crash — but it can produce a misleading alert.
 
-## 5. Local testing
+## 6. Local testing
 
 Install [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local) and [Azurite](https://learn.microsoft.com/azure/storage/common/storage-use-azurite) (local Table Storage emulator):
 
@@ -157,7 +182,7 @@ admin endpoint Core Tools prints at startup, or temporarily set
 `"run_on_startup": true` in the `@app.timer_trigger` decorator for a local
 test (revert before deploying).
 
-## 6. Provision Azure resources
+## 7. Provision Azure resources
 
 ```bash
 RG=market-monitor-rg
@@ -183,7 +208,7 @@ times a day at most, well within the free grant. If you already have a
 Function App / plan on your Azure VM's App Service environment, use that
 instead of creating a new Consumption plan.)
 
-## 7. App settings
+## 8. App settings
 
 ```bash
 STORAGE_CONN=$(az storage account show-connection-string -n $STORAGE -g $RG -o tsv)
@@ -195,6 +220,7 @@ az functionapp config appsettings set -g $RG -n $FUNCAPP --settings \
   "KITE_STATE_TABLE=KiteAuthState" \
   "ALERT_STATE_TABLE=AlertState" \
   "NEWS_SEEN_TABLE=SeenHeadlines" \
+  "PIVOT_LEVELS_TABLE=PivotLevels" \
   "TELEGRAM_BOT_TOKEN=<your telegram bot token>" \
   "TELEGRAM_CHAT_ID=<your telegram chat id>"
 ```
@@ -206,7 +232,7 @@ list, evaluated in IST) is what actually restricts activity to market
 hours, so this is deliberately simple and immune to cron-timezone
 footguns. Use `0 */10 * * * *` for a 10-minute cadence instead.
 
-## 8. Deploy the function code
+## 9. Deploy the function code
 
 ```bash
 func azure functionapp publish $FUNCAPP
@@ -221,7 +247,7 @@ levels without redeploying at all, a natural follow-up is to move
 `config.yaml` into Blob Storage and read it from there instead of the
 local file; not implemented here to keep the initial version simple.
 
-## 9. Daily Kite login script on your VM
+## 10. Daily Kite login script on your VM
 
 On the Azure VM:
 
@@ -240,6 +266,7 @@ KITE_PASSWORD=<your Zerodha password>              # full-auto mode only
 KITE_TOTP_SECRET=<your base32 TOTP secret>          # full-auto mode only
 AZURE_STORAGE_CONNECTION_STRING=<same connection string as AzureWebJobsStorage>
 KITE_STATE_TABLE=KiteAuthState
+PIVOT_LEVELS_TABLE=PivotLevels
 EOF
 sudo chmod 600 /etc/kite-login.env
 ```
@@ -258,7 +285,7 @@ For production, move these secrets into **Azure Key Vault** and have the
 VM pull them at run time (via managed identity) instead of a plaintext
 env file — the env file above is the minimum-viable version.
 
-## 10. Verify end-to-end
+## 11. Verify end-to-end
 
 ```bash
 func azure functionapp log-stream -g $RG -n $FUNCAPP
@@ -290,7 +317,7 @@ Revert the level afterward.
 
 ## Known limitations
 
-- NSE holiday list is incomplete for variable-date festivals — see [§4](#4-nse-holidays---incomplete-by-design-verify-before-relying-on-it).
+- NSE holiday list is incomplete for variable-date festivals — see [§5](#5-nse-holidays---incomplete-by-design-verify-before-relying-on-it).
 - The TOTP auto-login path depends on Zerodha's undocumented login
   endpoints and may break without notice; the manual fallback is more
   durable but needs daily attention.
@@ -298,4 +325,11 @@ Revert the level afterward.
   is closed — a stale `tripped` flag for a long-closed position just sits
   unused; harmless, but if you're auditing the table, that's why old
   entries linger.
-- `config.yaml` changes require a redeploy, not a hot-reload (see §8).
+- `config.yaml` changes require a redeploy, not a hot-reload (see §9).
+- Auto pivot levels require Zerodha's paid Historical API add-on — see
+  [§3](#3-auto-computed-pivot-levels-optional-extra-cost). Without it,
+  `PivotLevels` stays empty and only your manual `watch_levels` apply.
+- Pivot levels are computed once per day (pre-market) and never refreshed
+  intraday, matching the classic floor-trader definition — they will not
+  reflect same-day volatility swings (e.g. a big VIX move) until the next
+  morning's run.

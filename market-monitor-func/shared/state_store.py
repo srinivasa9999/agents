@@ -1,6 +1,6 @@
 """Persistent state in Azure Table Storage.
 
-Three tables (created automatically on first use):
+Four tables (created automatically on first use):
   - KiteAuthState : one row holding today's Kite access_token (written by the
                     VM's daily login script, read by the function).
   - AlertState    : one row per monitored condition (a watch level, VIX,
@@ -8,6 +8,10 @@ Three tables (created automatically on first use):
                     on and when it last alerted, so we only alert on
                     transitions and respect the cooldown window.
   - SeenHeadlines : one row per news headline we've already alerted on.
+  - PivotLevels   : one row per symbol holding today's auto-computed
+                    classic pivot points (written by the VM's daily login
+                    script - see scripts/daily_kite_login.py - read by the
+                    function and merged into that symbol's watch_levels).
 
 Using Azure Table Storage (not blob/local file) because it survives cold
 starts and scale-out (multiple function instances would share the same
@@ -25,11 +29,19 @@ logger = logging.getLogger("market_monitor.state")
 
 
 class StateStore:
-    def __init__(self, connection_string: str, kite_table: str, alert_table: str, news_table: str):
+    def __init__(
+        self,
+        connection_string: str,
+        kite_table: str,
+        alert_table: str,
+        news_table: str,
+        pivot_table: str = "PivotLevels",
+    ):
         self._service = TableServiceClient.from_connection_string(connection_string)
         self.kite_table = self._get_or_create_table(kite_table)
         self.alert_table = self._get_or_create_table(alert_table)
         self.news_table = self._get_or_create_table(news_table)
+        self.pivot_table = self._get_or_create_table(pivot_table)
 
     def _get_or_create_table(self, name: str):
         try:
@@ -45,6 +57,27 @@ class StateStore:
             return self.kite_table.get_entity(partition_key="kite", row_key="session")
         except ResourceNotFoundError:
             return None
+
+    # ------------------------------------------------------------------- pivots
+
+    def get_pivot_levels(self, symbol_name: str) -> list[dict] | None:
+        """Returns [{"label": "Pivot R1", "price": ...}, ...] for symbol_name
+        as computed by scripts/daily_kite_login.py, in the same {label,
+        price} shape as config.yaml's watch_levels - or None if pivots
+        haven't been computed for this symbol yet (script hasn't run, or the
+        Historical API add-on isn't enabled)."""
+        try:
+            entity = self.pivot_table.get_entity(partition_key="pivot", row_key=symbol_name)
+        except ResourceNotFoundError:
+            return None
+
+        order = ["R3", "R2", "R1", "P", "S1", "S2", "S3"]
+        levels = [
+            {"label": f"Pivot {name}", "price": entity[f"level_{name}"]}
+            for name in order
+            if f"level_{name}" in entity
+        ]
+        return levels or None
 
     # ---------------------------------------------------------- generic alert state
 
