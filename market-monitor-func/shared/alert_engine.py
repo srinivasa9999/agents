@@ -116,6 +116,82 @@ def check_vix_move(
     return alerts
 
 
+def check_pcr_extreme(
+    symbol_name: str,
+    pcr: float,
+    low_threshold: float,
+    high_threshold: float,
+    cooldown_minutes: int,
+    state_store: StateStore,
+) -> list[Alert]:
+    """Trip/re-arm alert when PCR (put OI / call OI) moves outside the
+    [low_threshold, high_threshold] band - a common trader heuristic for a
+    sentiment extreme. Alerts once on entry to the extreme, re-arms once
+    PCR returns inside the band, same pattern as check_vix_move."""
+    condition_key = f"pcr_extreme:{symbol_name}"
+    state = state_store.get_alert_state(condition_key)
+    tripped_prev = bool(state.get("tripped", False)) if state else False
+    breached = pcr <= low_threshold or pcr >= high_threshold
+
+    if breached and not tripped_prev:
+        if state_store.cooldown_elapsed(condition_key, cooldown_minutes):
+            band = "low" if pcr <= low_threshold else "high"
+            note = "unusually low - more call OI than put OI" if band == "low" else "unusually high - more put OI than call OI"
+            return [Alert(
+                condition_key=condition_key,
+                category="pcr",
+                title=f"{symbol_name} PCR hit a {band} extreme",
+                current_value=f"{pcr:.2f}",
+                threshold=f"<= {low_threshold:.2f} or >= {high_threshold:.2f}",
+                detail=f"{symbol_name} Put-Call Ratio is {pcr:.2f} ({note})",
+                timestamp=datetime.now(tz=IST),
+                on_delivered=lambda: state_store.record_alert_sent(condition_key, tripped=True),
+            )]
+        state_store.set_alert_state(condition_key, tripped=True)
+    elif not breached and tripped_prev:
+        state_store.set_alert_state(condition_key, tripped=False)
+
+    return []
+
+
+def check_top_oi_shift(
+    symbol_name: str,
+    option_type: str,
+    strike: float,
+    oi: float,
+    cooldown_minutes: int,
+    state_store: StateStore,
+) -> list[Alert]:
+    """Alerts when the strike holding the highest OI for `option_type`
+    ("CE" or "PE") changes from the last known one - i.e. the strike
+    option writers are most positioned at (read as working
+    resistance/support) has moved. First observation just sets the
+    baseline, no alert."""
+    condition_key = f"top_oi:{symbol_name}:{option_type}"
+    state = state_store.get_alert_state(condition_key)
+    prev_strike = state.get("strike") if state else None
+
+    if prev_strike is None or strike == prev_strike:
+        state_store.set_alert_state(condition_key, strike=strike, oi=oi)
+        return []
+
+    if not state_store.cooldown_elapsed(condition_key, cooldown_minutes):
+        state_store.set_alert_state(condition_key, strike=strike, oi=oi)
+        return []
+
+    label = "resistance (highest Call OI)" if option_type == "CE" else "support (highest Put OI)"
+    return [Alert(
+        condition_key=condition_key,
+        category="oi_top_shift",
+        title=f"{symbol_name} top-OI {option_type} strike shifted",
+        current_value=f"{strike:g} (OI {oi:,.0f})",
+        threshold=f"was {prev_strike:g}",
+        detail=f"{symbol_name} {label} moved from {prev_strike:g} to {strike:g}",
+        timestamp=datetime.now(tz=IST),
+        on_delivered=lambda: state_store.record_alert_sent(condition_key, strike=strike, oi=oi),
+    )]
+
+
 def check_positions(
     positions: list[dict],
     positions_config: dict,

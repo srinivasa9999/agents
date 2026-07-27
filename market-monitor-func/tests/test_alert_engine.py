@@ -1,4 +1,10 @@
-from shared.alert_engine import check_level_crossings, check_positions, check_vix_move
+from shared.alert_engine import (
+    check_level_crossings,
+    check_pcr_extreme,
+    check_positions,
+    check_top_oi_shift,
+    check_vix_move,
+)
 
 from .conftest import deliver
 
@@ -95,4 +101,62 @@ def test_position_below_threshold_no_alert(state_store):
     }
     positions = [{"tradingsymbol": "NIFTY24800CE", "quantity": 50, "average_price": 120, "last_price": 140, "pnl": 1000}]
     alerts = check_positions(positions, positions_config, cooldown_minutes=15, state_store=state_store)
+    assert alerts == []
+
+
+def test_pcr_first_reading_extreme_alerts(state_store):
+    # Unlike level-cross (which only sets a baseline on first observation),
+    # PCR has no "previous side" concept - only tripped/not-tripped - so an
+    # extreme value alerts immediately even on the first ever reading.
+    alerts = check_pcr_extreme("NIFTY", pcr=1.5, low_threshold=0.7, high_threshold=1.3, cooldown_minutes=15, state_store=state_store)
+    assert len(alerts) == 1
+    assert "high extreme" in alerts[0].title
+
+
+def test_pcr_within_band_no_alert(state_store):
+    alerts = check_pcr_extreme("NIFTY", pcr=1.0, low_threshold=0.7, high_threshold=1.3, cooldown_minutes=15, state_store=state_store)
+    assert alerts == []
+
+
+def test_pcr_low_extreme_alerts(state_store):
+    alerts = check_pcr_extreme("NIFTY", pcr=0.5, low_threshold=0.7, high_threshold=1.3, cooldown_minutes=15, state_store=state_store)
+    assert len(alerts) == 1
+    assert "low extreme" in alerts[0].title
+
+
+def test_pcr_no_repeat_while_still_extreme(state_store):
+    deliver(check_pcr_extreme("NIFTY", pcr=1.5, low_threshold=0.7, high_threshold=1.3, cooldown_minutes=15, state_store=state_store))
+    alerts = check_pcr_extreme("NIFTY", pcr=1.6, low_threshold=0.7, high_threshold=1.3, cooldown_minutes=15, state_store=state_store)
+    assert alerts == []
+
+
+def test_pcr_rearms_after_returning_to_band(state_store):
+    deliver(check_pcr_extreme("NIFTY", pcr=1.5, low_threshold=0.7, high_threshold=1.3, cooldown_minutes=0, state_store=state_store))
+    deliver(check_pcr_extreme("NIFTY", pcr=1.0, low_threshold=0.7, high_threshold=1.3, cooldown_minutes=0, state_store=state_store))
+    alerts = check_pcr_extreme("NIFTY", pcr=1.5, low_threshold=0.7, high_threshold=1.3, cooldown_minutes=0, state_store=state_store)
+    assert len(alerts) == 1
+
+
+def test_top_oi_shift_first_observation_sets_baseline(state_store):
+    alerts = check_top_oi_shift("NIFTY", "CE", strike=24600, oi=9000, cooldown_minutes=15, state_store=state_store)
+    assert alerts == []
+
+
+def test_top_oi_shift_same_strike_no_alert(state_store):
+    deliver(check_top_oi_shift("NIFTY", "CE", strike=24600, oi=9000, cooldown_minutes=15, state_store=state_store))
+    alerts = check_top_oi_shift("NIFTY", "CE", strike=24600, oi=9500, cooldown_minutes=15, state_store=state_store)
+    assert alerts == []
+
+
+def test_top_oi_shift_alerts_on_change(state_store):
+    deliver(check_top_oi_shift("NIFTY", "CE", strike=24600, oi=9000, cooldown_minutes=15, state_store=state_store))
+    alerts = check_top_oi_shift("NIFTY", "CE", strike=24700, oi=9500, cooldown_minutes=15, state_store=state_store)
+    assert len(alerts) == 1
+    assert "24600" in alerts[0].detail and "24700" in alerts[0].detail
+
+
+def test_top_oi_shift_suppressed_within_cooldown(state_store):
+    deliver(check_top_oi_shift("NIFTY", "CE", strike=24600, oi=9000, cooldown_minutes=15, state_store=state_store))
+    deliver(check_top_oi_shift("NIFTY", "CE", strike=24700, oi=9500, cooldown_minutes=15, state_store=state_store))
+    alerts = check_top_oi_shift("NIFTY", "CE", strike=24600, oi=9000, cooldown_minutes=15, state_store=state_store)
     assert alerts == []

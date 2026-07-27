@@ -56,6 +56,7 @@ Required environment variables (put these in Key Vault / a restricted
     AZURE_STORAGE_CONNECTION_STRING - same storage account the Function App uses
     KITE_STATE_TABLE           - defaults to "KiteAuthState"
     PIVOT_LEVELS_TABLE          - defaults to "PivotLevels" (see pivot section below)
+    OPTION_CHAIN_TABLE           - defaults to "OptionChainInstruments" (see option chain section below)
 
 ============================================================================
 DAILY PIVOT POINTS (auto-computed support/resistance)
@@ -73,8 +74,22 @@ add-on to the base Kite Connect API plan, sold separately) because it
 calls kite.historical_data(). If you don't have that add-on, this step
 logs a warning and is skipped - it will NOT fail the login itself, since
 minting today's access token is this script's primary job.
+
+============================================================================
+DAILY OPTION CHAIN (PCR + top-OI-strike)
+============================================================================
+Also resolves, once a day, an ATM-centered window of NIFTY/BANKNIFTY option
+strikes for the nearest expiry (via kite.instruments("NFO") - a large
+one-time dump, which is why this only runs here, pre-market, and not inside
+the Function's 5-10 minute timer) and writes the resulting
+strike/tradingsymbol list to the `OPTION_CHAIN_TABLE` table. The Function
+App quotes just that curated list each cycle (piggybacking on API calls it
+already makes - no extra Kite subscription cost) to compute PCR (put-call
+ratio) and flag when the highest-OI call/put strike shifts. See
+shared/option_chain.py and function_app.py's _run_option_chain_checks.
 """
 import argparse
+import json
 import logging
 import os
 import sys
@@ -88,6 +103,7 @@ from kiteconnect import KiteConnect
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.pivot_points import compute_classic_pivots  # noqa: E402
+from shared.option_chain import select_atm_strikes  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("daily_kite_login")
@@ -103,6 +119,14 @@ CONNECT_LOGIN_URL = "https://kite.zerodha.com/connect/login"
 PIVOT_SYMBOLS = {
     "NIFTY": "NSE:NIFTY 50",
     "BANKNIFTY": "NSE:NIFTY BANK",
+}
+
+# Option-chain window per symbol: how many strikes above/below ATM to track
+# for PCR/OI. "name" must match the `name` column in Kite's NFO instrument
+# dump (the underlying's name, not its NSE index tradingsymbol).
+OPTION_CHAIN_SYMBOLS = {
+    "NIFTY": {"kite_symbol": "NSE:NIFTY 50", "name": "NIFTY", "strikes_each_side": 4},
+    "BANKNIFTY": {"kite_symbol": "NSE:NIFTY BANK", "name": "BANKNIFTY", "strikes_each_side": 6},
 }
 
 
@@ -253,6 +277,91 @@ def compute_and_store_daily_pivots(kite: KiteConnect, conn_str: str, table_name:
             )
 
 
+def resolve_option_chain(kite: KiteConnect, name: str, kite_symbol: str, strikes_each_side: int) -> dict | None:
+    """Picks the nearest unexpired NFO expiry for `name` (e.g. "NIFTY"),
+    selects `strikes_each_side` strikes above/below the current ATM strike,
+    and returns {"expiry": "YYYY-MM-DD", "strikes": [{"strike":, "ce_symbol":,
+    "ce_token":, "pe_symbol":, "pe_token":}, ...]}.
+
+    Returns None if no matching contracts are found (e.g. between expiry
+    rollovers). Raises whatever kite.quote()/kite.instruments() raise on
+    failure - the caller decides whether that's fatal.
+    """
+    quote = kite.quote([kite_symbol])[kite_symbol]
+    spot = quote["last_price"]
+
+    instruments = kite.instruments("NFO")
+    rows = [row for row in instruments if row.get("name") == name and row.get("instrument_type") in ("CE", "PE")]
+    if not rows:
+        return None
+
+    today = date.today()
+    expiries = sorted({row["expiry"] for row in rows if row["expiry"] >= today})
+    if not expiries:
+        return None
+    nearest_expiry = expiries[0]
+
+    rows = [row for row in rows if row["expiry"] == nearest_expiry]
+    selected_strikes = select_atm_strikes([row["strike"] for row in rows], spot, strikes_each_side)
+
+    by_strike: dict[float, dict] = {}
+    for row in rows:
+        if row["strike"] not in selected_strikes:
+            continue
+        entry = by_strike.setdefault(row["strike"], {"strike": row["strike"]})
+        if row["instrument_type"] == "CE":
+            entry["ce_symbol"] = f"NFO:{row['tradingsymbol']}"
+            entry["ce_token"] = row["instrument_token"]
+        else:
+            entry["pe_symbol"] = f"NFO:{row['tradingsymbol']}"
+            entry["pe_token"] = row["instrument_token"]
+
+    strikes = sorted(by_strike.values(), key=lambda e: e["strike"])
+    return {"expiry": nearest_expiry.isoformat(), "strikes": strikes}
+
+
+def store_option_chain(connection_string: str, table_name: str, symbol_name: str, chain: dict) -> None:
+    service = TableServiceClient.from_connection_string(connection_string)
+    try:
+        service.create_table(table_name)
+    except Exception:
+        pass  # table already exists
+    table = service.get_table_client(table_name)
+    table.upsert_entity(
+        {
+            "PartitionKey": "chain",
+            "RowKey": symbol_name,
+            "computed_at": datetime.now(timezone.utc).isoformat(),
+            "expiry": chain["expiry"],
+            "strikes_json": json.dumps(chain["strikes"]),
+        },
+        mode=UpdateMode.MERGE,
+    )
+
+
+def compute_and_store_option_chains(kite: KiteConnect, conn_str: str, table_name: str) -> None:
+    """Best-effort, same rationale as compute_and_store_daily_pivots: a
+    missing permission or a transient error here must never take down the
+    daily login this script exists to perform."""
+    for symbol_name, cfg in OPTION_CHAIN_SYMBOLS.items():
+        try:
+            chain = resolve_option_chain(kite, cfg["name"], cfg["kite_symbol"], cfg["strikes_each_side"])
+            if chain is None:
+                logger.warning("No option chain contracts found for %s - skipping.", symbol_name)
+                continue
+            store_option_chain(conn_str, table_name, symbol_name, chain)
+            logger.info(
+                "Stored option chain for %s: expiry=%s strikes=%d",
+                symbol_name, chain["expiry"], len(chain["strikes"]),
+            )
+        except Exception:
+            logger.exception(
+                "Option chain resolution failed for %s - if this is a permissions error, "
+                "check your Kite Connect app's F&O/derivatives access. Non-fatal, continuing.",
+                symbol_name,
+            )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manual", action="store_true", help="Prompt for interactive browser login instead of full TOTP automation.")
@@ -280,6 +389,9 @@ def main() -> int:
 
     pivot_table_name = os.environ.get("PIVOT_LEVELS_TABLE", "PivotLevels")
     compute_and_store_daily_pivots(kite, conn_str, pivot_table_name)
+
+    option_chain_table_name = os.environ.get("OPTION_CHAIN_TABLE", "OptionChainInstruments")
+    compute_and_store_option_chains(kite, conn_str, option_chain_table_name)
 
     return 0
 

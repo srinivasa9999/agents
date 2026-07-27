@@ -6,7 +6,7 @@ from datetime import datetime
 @dataclass
 class Alert:
     condition_key: str  # stable id used for state/cooldown tracking
-    category: str  # "level_cross" | "vix" | "position_pnl" | "position_ltp" | "news"
+    category: str  # "level_cross" | "vix" | "position_pnl" | "position_ltp" | "news" | "pcr" | "oi_top_shift"
     title: str
     current_value: str
     threshold: str

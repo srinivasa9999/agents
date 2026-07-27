@@ -17,13 +17,20 @@ import os
 
 import azure.functions as func
 
-from shared.alert_engine import check_level_crossings, check_positions, check_vix_move
+from shared.alert_engine import (
+    check_level_crossings,
+    check_pcr_extreme,
+    check_positions,
+    check_top_oi_shift,
+    check_vix_move,
+)
 from shared.config_loader import load_config, load_holidays
 from shared.kite_auth import get_kite_client
 from shared.market_calendar import is_market_open_now
 from shared.market_data import MarketDataError, ReadOnlyKite, get_index_quotes, get_open_positions
 from shared.models import Alert
 from shared.news_check import check_news
+from shared.option_chain import summarize_chain
 from shared.state_store import StateStore
 from shared.telegram_notify import send_alerts, send_telegram_message
 
@@ -41,6 +48,7 @@ def _get_state_store() -> StateStore:
         alert_table=os.environ.get("ALERT_STATE_TABLE", "AlertState"),
         news_table=os.environ.get("NEWS_SEEN_TABLE", "SeenHeadlines"),
         pivot_table=os.environ.get("PIVOT_LEVELS_TABLE", "PivotLevels"),
+        option_chain_table=os.environ.get("OPTION_CHAIN_TABLE", "OptionChainInstruments"),
     )
 
 
@@ -189,5 +197,83 @@ def _run_kite_checks(kite: ReadOnlyKite, config: dict, cooldown_minutes: int, st
         cooldown_minutes=cooldown_minutes,
         state_store=state_store,
     ))
+
+    option_chain_config = config.get("option_chain", {})
+    if option_chain_config.get("enabled"):
+        alerts.extend(_run_option_chain_checks(kite, symbols_config, option_chain_config, cooldown_minutes, state_store))
+
+    return alerts
+
+
+def _run_option_chain_checks(
+    kite: ReadOnlyKite,
+    symbols_config: dict,
+    option_chain_config: dict,
+    cooldown_minutes: int,
+    state_store: StateStore,
+) -> list[Alert]:
+    """PCR + top-OI-strike alerts. The strike/expiry window itself is
+    resolved once a day by the VM login script (see
+    scripts/daily_kite_login.py's compute_and_store_option_chains) - this
+    only quotes that already-curated list and computes alerts from it, so
+    it costs one extra quote() call per symbol per cycle, not an
+    instruments() dump."""
+    alerts: list[Alert] = []
+    pcr_config = option_chain_config.get("pcr_alert", {})
+    low_threshold = pcr_config.get("low_threshold", 0.7)
+    high_threshold = pcr_config.get("high_threshold", 1.3)
+
+    for symbol_name in symbols_config:
+        chain = state_store.get_option_chain(symbol_name)
+        if not chain or not chain.get("strikes"):
+            logger.info("No auto-resolved option chain available yet for %s", symbol_name)
+            continue
+
+        instruments = [
+            sym
+            for strike in chain["strikes"]
+            for sym in (strike.get("ce_symbol"), strike.get("pe_symbol"))
+            if sym
+        ]
+        if not instruments:
+            continue
+
+        try:
+            chain_quotes_raw = get_index_quotes(kite, instruments)
+        except MarketDataError:
+            logger.exception("Failed to fetch option chain quotes for %s", symbol_name)
+            continue
+
+        chain_quotes = [
+            {
+                "strike": strike["strike"],
+                "ce_oi": chain_quotes_raw.get(strike.get("ce_symbol"), {}).get("oi", 0) if strike.get("ce_symbol") else 0,
+                "pe_oi": chain_quotes_raw.get(strike.get("pe_symbol"), {}).get("oi", 0) if strike.get("pe_symbol") else 0,
+            }
+            for strike in chain["strikes"]
+        ]
+        summary = summarize_chain(chain_quotes)
+
+        if summary["pcr"] is not None:
+            alerts.extend(check_pcr_extreme(
+                symbol_name=symbol_name,
+                pcr=summary["pcr"],
+                low_threshold=low_threshold,
+                high_threshold=high_threshold,
+                cooldown_minutes=cooldown_minutes,
+                state_store=state_store,
+            ))
+        if summary["max_call_oi_strike"] is not None:
+            alerts.extend(check_top_oi_shift(
+                symbol_name=symbol_name, option_type="CE",
+                strike=summary["max_call_oi_strike"], oi=summary["max_call_oi"],
+                cooldown_minutes=cooldown_minutes, state_store=state_store,
+            ))
+        if summary["max_put_oi_strike"] is not None:
+            alerts.extend(check_top_oi_shift(
+                symbol_name=symbol_name, option_type="PE",
+                strike=summary["max_put_oi_strike"], oi=summary["max_put_oi"],
+                cooldown_minutes=cooldown_minutes, state_store=state_store,
+            ))
 
     return alerts

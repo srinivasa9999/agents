@@ -52,16 +52,19 @@ market-monitor-func/
 │   ├── market_calendar.py     Is-it-market-hours-right-now logic
 │   ├── kite_auth.py           Reads (never generates) a Kite session
 │   ├── market_data.py         Read-only Kite quote/positions wrapper
-│   ├── alert_engine.py        Level-cross / VIX / position threshold logic + cooldown
+│   ├── alert_engine.py        Level-cross / VIX / position / PCR / OI threshold logic + cooldown
 │   ├── pivot_points.py        Classic pivot point formula (pure math, no I/O)
+│   ├── option_chain.py        PCR / top-OI-strike math (pure, no I/O)
 │   ├── news_check.py          RSS keyword scan with new-headline dedup
 │   ├── telegram_notify.py     Telegram Bot API sender
 │   └── state_store.py         Azure Table Storage persistence
 ├── scripts/daily_kite_login.py       Raw-HTTP login (VM, not the Function) -
 │                                      also computes/stores daily pivot levels
+│                                      and resolves the daily option chain
 ├── scripts/playwright_kite_login.py  What kite_login_cron_wrapper.sh (the
 │                                      actual daily cron) runs - same login +
-│                                      pivot computation, via a real browser
+│                                      pivot/option-chain computation, via a
+│                                      real browser
 └── tests/                           pytest unit tests for the logic above
 ```
 
@@ -115,7 +118,7 @@ the Function App** - only `api_key` does.
 ## 3. Auto-computed pivot levels (optional, extra cost)
 
 Both login scripts - `daily_kite_login.py` and `playwright_kite_login.py`
-(whichever your cron actually runs; see [§10](#10-daily-kite-login-script-on-your-vm))
+(whichever your cron actually runs; see [§11](#11-daily-kite-login-script-on-your-vm))
 - compute classic floor-trader pivot
 points (P, R1-R3, S1-S3) for NIFTY and BANKNIFTY from the previous trading
 day's high/low/close, right after minting today's access token, and write
@@ -132,7 +135,36 @@ to just your manual `watch_levels`. Decide whether the add-on is worth it
 before relying on this; otherwise keep hand-setting support/resistance in
 `config.yaml` as before.
 
-## 4. Configure your watch levels/thresholds
+## 4. Auto-computed option chain: PCR + top-OI-strike (optional, extra permission)
+
+Both login scripts also resolve, once a day right after logging in, an
+ATM-centered window of NIFTY/BANKNIFTY option strikes for the nearest
+unexpired expiry - NIFTY: ATM +/-4 strikes, BANKNIFTY: ATM +/-6 strikes (see
+`OPTION_CHAIN_SYMBOLS` in `scripts/daily_kite_login.py` if you want to widen
+or narrow this) - and store that curated strike/tradingsymbol list in the
+`OPTION_CHAIN_TABLE` table (default `OptionChainInstruments`).
+
+The Function App then quotes just that list every cycle (18 instruments for
+NIFTY, 26 for BANKNIFTY in the default ranges) to compute:
+- **PCR** (put-call ratio: total put OI / total call OI across the tracked
+  strikes) - alerts once when it moves outside the configured band
+  (`option_chain.pcr_alert.low_threshold`/`high_threshold` in
+  `config/config.yaml`, default 0.7/1.3) and re-arms when it returns inside.
+- **Top-OI-strike shifts** - alerts when the strike holding the highest call
+  OI (resistance) or highest put OI (support) changes from the last cycle.
+
+**Cost**: resolving the chain (`kite.instruments("NFO")`, a multi-MB dump of
+every F&O contract) only happens once a day, pre-market, in the login
+script - never inside the Function's 5-10 minute timer. The Function's
+per-cycle cost is just two extra `quote()` calls (measured ~0.08s each for
+the default ranges) - the same endpoint it already calls for
+NIFTY/BANKNIFTY/VIX, at no extra Kite subscription cost. This needs your
+Kite Connect app to have F&O/derivatives instrument access; if
+`kite.instruments("NFO")` or the option quotes fail, the resolution step
+logs a warning and is skipped for that symbol without failing the login or
+the alert run.
+
+## 5. Configure your watch levels/thresholds
 
 Edit `config/config.yaml`:
 - `symbols.NIFTY.watch_levels` / `symbols.BANKNIFTY.watch_levels` — your support/resistance/strike levels.
@@ -144,7 +176,7 @@ Edit `config/config.yaml`:
 This file ships with placeholder example levels — **replace them with your
 real numbers before relying on this.**
 
-## 5. NSE holidays - incomplete by design, verify before relying on it
+## 6. NSE holidays - incomplete by design, verify before relying on it
 
 `data/nse_holidays.json` includes only the fixed-date national holidays we
 could confirm (Republic Day, Good Friday, Maharashtra Din, Muharram 2026,
@@ -159,7 +191,7 @@ function runs unattended for an extended period. Missing a holiday means
 the function evaluates stale/closed-market prices during that window, not
 a crash — but it can produce a misleading alert.
 
-## 6. Local testing
+## 7. Local testing
 
 Install [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local) and [Azurite](https://learn.microsoft.com/azure/storage/common/storage-use-azurite) (local Table Storage emulator):
 
@@ -182,7 +214,7 @@ admin endpoint Core Tools prints at startup, or temporarily set
 `"run_on_startup": true` in the `@app.timer_trigger` decorator for a local
 test (revert before deploying).
 
-## 7. Provision Azure resources
+## 8. Provision Azure resources
 
 ```bash
 RG=market-monitor-rg
@@ -208,7 +240,7 @@ times a day at most, well within the free grant. If you already have a
 Function App / plan on your Azure VM's App Service environment, use that
 instead of creating a new Consumption plan.)
 
-## 8. App settings
+## 9. App settings
 
 ```bash
 STORAGE_CONN=$(az storage account show-connection-string -n $STORAGE -g $RG -o tsv)
@@ -221,6 +253,7 @@ az functionapp config appsettings set -g $RG -n $FUNCAPP --settings \
   "ALERT_STATE_TABLE=AlertState" \
   "NEWS_SEEN_TABLE=SeenHeadlines" \
   "PIVOT_LEVELS_TABLE=PivotLevels" \
+  "OPTION_CHAIN_TABLE=OptionChainInstruments" \
   "TELEGRAM_BOT_TOKEN=<your telegram bot token>" \
   "TELEGRAM_CHAT_ID=<your telegram chat id>"
 ```
@@ -232,7 +265,7 @@ list, evaluated in IST) is what actually restricts activity to market
 hours, so this is deliberately simple and immune to cron-timezone
 footguns. Use `0 */10 * * * *` for a 10-minute cadence instead.
 
-## 9. Deploy the function code
+## 10. Deploy the function code
 
 ```bash
 func azure functionapp publish $FUNCAPP
@@ -247,7 +280,7 @@ levels without redeploying at all, a natural follow-up is to move
 `config.yaml` into Blob Storage and read it from there instead of the
 local file; not implemented here to keep the initial version simple.
 
-## 10. Daily Kite login script on your VM
+## 11. Daily Kite login script on your VM
 
 On the Azure VM:
 
@@ -267,6 +300,7 @@ KITE_TOTP_SECRET=<your base32 TOTP secret>          # full-auto mode only
 AZURE_STORAGE_CONNECTION_STRING=<same connection string as AzureWebJobsStorage>
 KITE_STATE_TABLE=KiteAuthState
 PIVOT_LEVELS_TABLE=PivotLevels
+OPTION_CHAIN_TABLE=OptionChainInstruments
 EOF
 sudo chmod 600 /etc/kite-login.env
 ```
@@ -285,7 +319,7 @@ For production, move these secrets into **Azure Key Vault** and have the
 VM pull them at run time (via managed identity) instead of a plaintext
 env file — the env file above is the minimum-viable version.
 
-## 11. Verify end-to-end
+## 12. Verify end-to-end
 
 ```bash
 func azure functionapp log-stream -g $RG -n $FUNCAPP
@@ -317,7 +351,7 @@ Revert the level afterward.
 
 ## Known limitations
 
-- NSE holiday list is incomplete for variable-date festivals — see [§5](#5-nse-holidays---incomplete-by-design-verify-before-relying-on-it).
+- NSE holiday list is incomplete for variable-date festivals — see [§6](#6-nse-holidays---incomplete-by-design-verify-before-relying-on-it).
 - The TOTP auto-login path depends on Zerodha's undocumented login
   endpoints and may break without notice; the manual fallback is more
   durable but needs daily attention.
@@ -325,7 +359,7 @@ Revert the level afterward.
   is closed — a stale `tripped` flag for a long-closed position just sits
   unused; harmless, but if you're auditing the table, that's why old
   entries linger.
-- `config.yaml` changes require a redeploy, not a hot-reload (see §9).
+- `config.yaml` changes require a redeploy, not a hot-reload (see §10).
 - Auto pivot levels require Zerodha's paid Historical API add-on — see
   [§3](#3-auto-computed-pivot-levels-optional-extra-cost). Without it,
   `PivotLevels` stays empty and only your manual `watch_levels` apply.
@@ -333,3 +367,11 @@ Revert the level afterward.
   intraday, matching the classic floor-trader definition — they will not
   reflect same-day volatility swings (e.g. a big VIX move) until the next
   morning's run.
+- The option chain's strike/tradingsymbol window (§4) is likewise resolved
+  once per day, pre-market. If the nearest expiry rolls over mid-day (it
+  won't for weekly index options resolved before 09:15) or ATM drifts far
+  enough intraday, PCR/OI will be computed on a window that's no longer
+  centered on the current spot price until the next morning's run re-picks it.
+- Top-OI-strike shift alerts only track the single highest-OI call and put
+  strike each - a full per-strike long/short-buildup breakdown (the richer
+  but noisier option originally considered) isn't implemented.

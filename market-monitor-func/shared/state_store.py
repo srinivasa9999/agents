@@ -12,6 +12,11 @@ Four tables (created automatically on first use):
                     classic pivot points (written by the VM's daily login
                     script - see scripts/daily_kite_login.py - read by the
                     function and merged into that symbol's watch_levels).
+  - OptionChainInstruments : one row per symbol holding today's resolved
+                    ATM-centered option chain (expiry + strike/tradingsymbol
+                    list, written by the VM's daily login script), read by
+                    the function each cycle to quote OI and compute PCR /
+                    top-OI-strike alerts.
 
 Using Azure Table Storage (not blob/local file) because it survives cold
 starts and scale-out (multiple function instances would share the same
@@ -19,6 +24,7 @@ file-locking problems a local file doesn't solve), needs no extra Azure
 resource beyond the storage account the Function App already requires, and
 gives us cheap per-entity read/write without a database server.
 """
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -36,12 +42,14 @@ class StateStore:
         alert_table: str,
         news_table: str,
         pivot_table: str = "PivotLevels",
+        option_chain_table: str = "OptionChainInstruments",
     ):
         self._service = TableServiceClient.from_connection_string(connection_string)
         self.kite_table = self._get_or_create_table(kite_table)
         self.alert_table = self._get_or_create_table(alert_table)
         self.news_table = self._get_or_create_table(news_table)
         self.pivot_table = self._get_or_create_table(pivot_table)
+        self.option_chain_table = self._get_or_create_table(option_chain_table)
 
     def _get_or_create_table(self, name: str):
         try:
@@ -78,6 +86,23 @@ class StateStore:
             if f"level_{name}" in entity
         ]
         return levels or None
+
+    # -------------------------------------------------------------- option chain
+
+    def get_option_chain(self, symbol_name: str) -> dict | None:
+        """Returns {"expiry": "YYYY-MM-DD", "strikes": [{"strike":, "ce_symbol":,
+        "ce_token":, "pe_symbol":, "pe_token":}, ...]} as resolved by
+        scripts/daily_kite_login.py, or None if not yet computed today (or
+        the stored entity is malformed)."""
+        try:
+            entity = self.option_chain_table.get_entity(partition_key="chain", row_key=symbol_name)
+        except ResourceNotFoundError:
+            return None
+        try:
+            strikes = json.loads(entity["strikes_json"])
+        except (KeyError, ValueError):
+            return None
+        return {"expiry": entity.get("expiry"), "strikes": strikes}
 
     # ---------------------------------------------------------- generic alert state
 

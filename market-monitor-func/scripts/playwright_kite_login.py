@@ -24,20 +24,24 @@ Notes on Kite's login SPA, reverse-engineered by trial and error:
 Requires the same env vars as daily_kite_login.py's full-auto mode:
   KITE_API_KEY, KITE_API_SECRET, KITE_USER_ID, KITE_PASSWORD,
   KITE_TOTP_SECRET, AZURE_STORAGE_CONNECTION_STRING, KITE_STATE_TABLE (optional)
-  PIVOT_LEVELS_TABLE (optional) - see daily pivot points below.
+  PIVOT_LEVELS_TABLE, OPTION_CHAIN_TABLE (optional) - see below.
 
 ============================================================================
-DAILY PIVOT POINTS
+DAILY PIVOT POINTS + OPTION CHAIN (PCR / top-OI-strike)
 ============================================================================
 This is the script the daily cron actually runs (see
 scripts/kite_login_cron_wrapper.sh), so - same as daily_kite_login.py - it
-also computes classic floor-trader pivot points (P, R1-R3, S1-S3) for
-NIFTY/BANKNIFTY from the previous trading day's H/L/C right after logging
-in, and writes them to Table Storage for the Function App to merge into its
-watch_levels. Reuses daily_kite_login.compute_and_store_daily_pivots rather
-than duplicating it. Requires Zerodha's Historical API add-on/permission -
-if that's not enabled, this step logs a warning and is skipped without
-failing the login.
+also, right after logging in:
+  - computes classic floor-trader pivot points (P, R1-R3, S1-S3) for
+    NIFTY/BANKNIFTY from the previous trading day's H/L/C, for the
+    Function App to merge into its watch_levels.
+  - resolves an ATM-centered NIFTY/BANKNIFTY option chain window for the
+    Function App to quote each cycle and compute PCR / top-OI-strike
+    alerts from.
+Both reuse daily_kite_login.py's functions rather than duplicating them.
+Both require Zerodha's Historical/F&O API permission - if that's not
+enabled, the relevant step logs a warning and is skipped without failing
+the login.
 """
 import os
 import sys
@@ -49,7 +53,7 @@ from kiteconnect import KiteConnect
 from azure.data.tables import TableServiceClient, UpdateMode
 
 sys.path.insert(0, os.path.dirname(__file__))
-from daily_kite_login import compute_and_store_daily_pivots  # noqa: E402
+from daily_kite_login import compute_and_store_daily_pivots, compute_and_store_option_chains  # noqa: E402
 
 
 def get_request_token(api_key: str, user_id: str, password: str, totp_secret: str) -> str:
@@ -129,10 +133,14 @@ def main() -> int:
     store_access_token(conn_str, table_name, api_key, access_token)
     print(f"Stored fresh Kite access token for {session_data.get('user_name')} (expires ~06:00 IST tomorrow).")
 
-    pivot_table_name = os.environ.get("PIVOT_LEVELS_TABLE", "PivotLevels")
     kite = KiteConnect(api_key=api_key)
     kite.set_access_token(access_token)
+
+    pivot_table_name = os.environ.get("PIVOT_LEVELS_TABLE", "PivotLevels")
     compute_and_store_daily_pivots(kite, conn_str, pivot_table_name)
+
+    option_chain_table_name = os.environ.get("OPTION_CHAIN_TABLE", "OptionChainInstruments")
+    compute_and_store_option_chains(kite, conn_str, option_chain_table_name)
 
     return 0
 

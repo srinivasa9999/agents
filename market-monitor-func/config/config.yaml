@@ -47,6 +47,21 @@ pivot_levels:
   # are used.
   enabled: true
 
+option_chain:
+  # PCR (put-call ratio) and top-OI-strike-shift alerts for NIFTY/BANKNIFTY.
+  # The actual strike window (NIFTY: ATM +/-4 strikes, BANKNIFTY: ATM +/-6
+  # strikes - see OPTION_CHAIN_SYMBOLS in scripts/daily_kite_login.py) is
+  # resolved once a day by the VM login script; this function only quotes
+  # that already-curated list each cycle, so there's no extra Kite API
+  # subscription cost beyond the base quote() calls it already makes.
+  enabled: true
+  pcr_alert:
+    # Alert once when PCR (total put OI / total call OI across the tracked
+    # strikes) moves outside this band - a common trader heuristic for a
+    # sentiment extreme, not gospel; tune to taste.
+    low_threshold: 0.7
+    high_threshold: 1.3
+
 vix:
   kite_symbol: "NSE:INDIA VIX"
   # Alert when VIX moves more than this % from the first reading of the day.
