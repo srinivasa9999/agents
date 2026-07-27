@@ -21,6 +21,8 @@ _CATEGORY_EMOJI = {
     "position_pnl": "💰",
     "position_ltp": "📊",
     "news": "📰",
+    "pcr": "⚖️",
+    "oi_top_shift": "🧲",
 }
 
 # Legacy Telegram "Markdown" parse mode only treats these four characters as
