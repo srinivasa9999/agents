@@ -41,6 +41,11 @@ SETUP_B_TARGET_R = 2.0             # Setup B remainder target, rule 4B
 PULLBACK_LOOKBACK_CANDLES = 5      # see module docstring in analyze_stock.py:
                                     # a documented proxy for "the pullback high/low",
                                     # not real swing-point detection
+VWAP_CROSS_LOOKBACK_CANDLES = 5    # see _vwap_crossed_and_held below - a same-candle
+                                    # cross requirement is blind to gap-and-go days that
+                                    # leave VWAP behind in the first few minutes and
+                                    # never revisit it (real finding: Bajaj Finance,
+                                    # 31 Jul 2026 backtest)
 
 
 def position_size(capital: float, entry: float, stop: float, risk_pct: float = RISK_PCT_OF_CAPITAL) -> int:
@@ -65,6 +70,43 @@ def _minutes_since_open(candle: dict, session_open_minutes: int = 9 * 60 + 15) -
     Callers pass IST-local datetimes (this doesn't do timezone conversion)."""
     t = candle["time"]
     return (t.hour * 60 + t.minute) - session_open_minutes
+
+
+def _vwap_crossed_and_held(candles: list[dict], vwap_series: list[float | None], i: int, direction: str,
+                            lookback: int = VWAP_CROSS_LOOKBACK_CANDLES) -> bool:
+    """True if, at some candle j within the last `lookback` candles up to
+    and including i, price crossed VWAP in `direction`'s favour (close was
+    on the wrong side at j-1, right side at j) AND every candle from j
+    through i has stayed on the right side since - i.e. a recent cross
+    that hasn't been lost, not merely "is currently above/below" (which on
+    a low-volatility name can be true for hours without ever being a real
+    signal - see the HDFC backtest that motivated the original VWAP-cross
+    rule) and not required to land on the exact current candle (which is
+    blind to a stock that gapped away from VWAP early and never came back
+    - see the Bajaj Finance backtest that motivated this lookback)."""
+    lo = max(1, i - lookback + 1)
+    for j in range(i, lo - 1, -1):
+        v_now, v_prev = vwap_series[j], vwap_series[j - 1]
+        if v_now is None or v_prev is None:
+            continue
+        prev_close, now_close = candles[j - 1]["close"], candles[j]["close"]
+        if direction == "long":
+            crossed = prev_close <= v_prev and now_close > v_now
+        else:
+            crossed = prev_close >= v_prev and now_close < v_now
+        if not crossed:
+            continue
+
+        held = True
+        for k in range(j, i + 1):
+            vk = vwap_series[k]
+            ck = candles[k]["close"]
+            if vk is None or (ck <= vk if direction == "long" else ck >= vk):
+                held = False
+                break
+        if held:
+            return True
+    return False
 
 
 def _day_extreme_move_pct(candles: list[dict], prev_close: float) -> float:
@@ -96,7 +138,7 @@ def evaluate_setup_a(candles: list[dict], prev_close: float) -> dict:
     vwap_series = vwap(highs, lows, closes, volumes)
 
     i = len(candles) - 1
-    now, prev = candles[i], candles[i - 1]
+    now = candles[i]
     direction = "long" if now["close"] >= prev_close else "short"
 
     checks = {}
@@ -106,11 +148,8 @@ def evaluate_setup_a(candles: list[dict], prev_close: float) -> dict:
     day_move_pct = _day_extreme_move_pct(candles, prev_close)
     checks["moved_enough"] = day_move_pct >= MOVE_FILTER_PCT
 
-    v_now, v_prev = vwap_series[i], vwap_series[i - 1]
-    if direction == "long":
-        checks["vwap_cross"] = v_prev is not None and v_now is not None and prev["close"] <= v_prev and now["close"] > v_now
-    else:
-        checks["vwap_cross"] = v_prev is not None and v_now is not None and prev["close"] >= v_prev and now["close"] < v_now
+    v_now = vwap_series[i]
+    checks["vwap_cross"] = _vwap_crossed_and_held(candles, vwap_series, i, direction)
 
     fast, slow = ema_fast[i], ema_slow[i]
     if fast is None or slow is None:
