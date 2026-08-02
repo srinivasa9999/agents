@@ -79,12 +79,23 @@ Instead of fading the day's big mover, join it on a controlled pullback:
 
 - **Filter:** stock moved ≥3–4% from previous close on above-average volume,
   no pending news/results lottery (check the news alerts this repo already
-  sends).
-- **Entry:** wait for the first pullback that holds **above VWAP** (for a
-  long; below VWAP for a short) and enter on the break of the pullback's
-  high/low. No pullback = no trade; chasing the vertical move is forbidden.
+  sends). The ≥3–4% test is on the **session's extreme so far**, not
+  necessarily the live price at signal time - a stock that spiked 4%+ inside
+  the rule-7 window and has since settled to a smaller live move is still
+  "today's mover." Don't disqualify a name just because the printed extreme
+  has scrolled off-screen by 09:45.
+- **Entry:** wait for the first pullback, then a **VWAP cross back** in the
+  trade's direction (price closing back above VWAP for a long / below VWAP
+  for a short), and enter on the break of the pullback's high/low. The cross
+  is the trigger - a continuous "price is above/below VWAP" state is not.
+  On lower-volatility names VWAP can sit far from price for hours without
+  ever being tested, which makes "holds above VWAP" trivially true and
+  useless as a filter. No pullback-then-cross = no trade; chasing the
+  vertical move is forbidden.
 - **Stop:** below the pullback low (long) / above the pullback high (short).
-- **Target:** 2R, or trail below higher lows once past 1.5R.
+- **Target:** 2R, or trail below higher lows once past 1.5R. Treat 2R as the
+  minimum bar that justifies taking the trade at entry (rule 5), not a
+  guaranteed outcome - real fills often land closer to 1.5-2R.
 - **Exit by 15:10 IST regardless** — no overnight conversion of an intraday
   trade ("it will recover tomorrow" is averaging in disguise).
 
@@ -108,19 +119,40 @@ Fading extremes can work, but only with a *location* and an *invalidation*:
 - **Hard rule:** one attempt per stock per day. Stopped out = done with that
   name today.
 
+### Backtest notes (real Kite data, 31 Jul 2026, 4 sessions)
+
+Findings from actually replaying the rules against real 3-minute candles
+(HDFC Bank, Hyundai Motor India, Bajaj Finance, Swiggy) - update this list as
+more sessions get tested:
+
+- **Setup B triggered a valid location+reversal in 3 of 4 sessions, and all
+  three fell entirely inside the rule-7 window.** Don't be surprised if this
+  setup sits idle for stretches once rule 7 is respected - that's the rule
+  working, not evidence the setup is broken. The extreme print that makes a
+  level worth fading is disproportionately likely to be the opening spike.
+- **The old-habit (fade-and-average) side lost money in all 4 sessions**,
+  but by two different mechanisms worth recognising in real time: a clean
+  loss (HDFC, Bajaj Finance, Swiggy) where the average never came back, and
+  a near-breakeven "save" (Hyundai) where it did - despite carrying an
+  unrealised drawdown over 1.5x the 1% risk budget at the worst point in
+  both Hyundai and Bajaj Finance. A trade that "worked" on P&L can still
+  have been a rule violation the whole time it was open; judge the process,
+  not just the close.
+- **Setup A's disciplined side won all 4 sessions** (+0.63R to +2.00R), which
+  is the reason for the two filter/entry clarifications above.
+
 ## 5. Use the alert system in this repo as the discipline layer
 
 The monitor already watches open positions (`positions:` in
 `config/config.yaml`). Tune it to nag *before* a loss becomes a disaster,
 not after:
 
-- `ltp_move_pct_threshold: 15` is far too wide for trades built around
-  ±4% moves — by the time it fires the account is already badly hurt.
-  Set it to **2–3%** so Telegram pings when price moves against the average
-  entry by roughly the planned stop distance.
-- Set `pnl_percentage_threshold` and `pnl_absolute_threshold_rupees` to the
-  **1R values from rule 3.1** (e.g. 1% of capital in rupees), so an alert
-  firing means "your stop should already have executed — check it."
+- `ltp_move_pct_threshold` is set to **2.0%** and `pnl_percentage_threshold`
+  to **1.0%** - both tuned against the real backtested stop distances above
+  (0.18%-0.88% of entry price), so a Telegram ping means "your stop should
+  already have executed - check it," not "you're already badly hurt."
+  `pnl_absolute_threshold_rupees` stays at ₹5,000 = rule 1's 1% risk on
+  ₹5,00,000 capital; re-tune it first if trading capital changes.
 - Treat any position alert on a *loser* as a hard instruction: verify the SL
   order exists and has not been cancelled/moved. Moving a stop further away
   is averaging by another name.

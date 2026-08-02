@@ -70,16 +70,26 @@ vix:
 positions:
   # Which checks to apply to each open position from kite.positions()["net"].
   # All enabled checks are evaluated independently per position.
+  #
+  # These three thresholds are tuned to TRADING_PLAN.md rule 1 (max 1% risk
+  # per trade) - they exist to fire an alert around where your own stop
+  # should already be, not after the account is badly hurt. Re-tune
+  # pnl_absolute_threshold_rupees if trading capital changes from ₹5,00,000.
   pnl_absolute_enabled: true
-  pnl_absolute_threshold_rupees: 5000
+  pnl_absolute_threshold_rupees: 5000  # = 1% of ₹5,00,000 (rule 1)
 
   pnl_percentage_enabled: true
-  # % of (average_price * quantity) magnitude.
-  pnl_percentage_threshold: 20
+  # % of (average_price * quantity) magnitude. Backtested real stop
+  # distances (31 Jul 2026, 4 stocks) ran 0.18%-0.88% of entry price when
+  # sized to rule 1's 1% capital risk - this is a coarse backstop set just
+  # above that observed range, not a substitute for the real SL order.
+  pnl_percentage_threshold: 1.0
 
   ltp_move_enabled: true
-  # % move of LTP away from your average entry price.
-  ltp_move_pct_threshold: 15
+  # % move of LTP away from your average entry price. Set near the wider
+  # end of real backtested stop distances so it fires close to where a
+  # Setup A/B stop would already have triggered.
+  ltp_move_pct_threshold: 2.0
 
 news:
   enabled: true
