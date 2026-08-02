@@ -331,6 +331,32 @@ something you know the current price has already crossed, redeploy, and
 confirm you get exactly one Telegram alert (not one every 5 minutes).
 Revert the level afterward.
 
+## 13. Ad-hoc stock analysis against docs/TRADING_PLAN.md (scripts/analyze_stock.py)
+
+Separate from the timer-triggered Function, this runs on demand (same VM as
+`daily_kite_login.py`, using the same stored session) to check any NSE stock
+against the trading plan's Setup A / Setup B rules right now:
+
+```bash
+python3 scripts/analyze_stock.py RELIANCE
+python3 scripts/analyze_stock.py NSE:RELIANCE --capital 500000
+```
+
+It fetches today's candles plus yesterday's OHLC (read-only, same
+`kite.quote()` / `kite.historical_data()` calls used elsewhere in this repo),
+computes VWAP/EMA9/EMA20/RSI14 (`shared/indicators.py`), and prints a
+rule-by-rule checklist for both setups (`shared/setup_rules.py`) - which
+conditions pass, which fail, and the entry/stop/target/size it would
+suggest only if every condition for that setup currently passes. It never
+places, modifies, or suggests placing an order via any Kite API call - see
+"Safety" below. Needs the same Historical API add-on as the pivot-point
+step in `daily_kite_login.py`.
+
+The "pullback high/low" it uses for the stop is a documented proxy (lowest
+low / highest high over the last 5 candles), not real swing-point
+detection - sanity-check its output against the chart, the same way you'd
+sanity-check any indicator, before acting on it.
+
 ## Editing config after deploy
 
 - `config/config.yaml`, `data/nse_holidays.json`: edit locally, `func azure functionapp publish` again.
