@@ -137,6 +137,8 @@ def print_report(symbol: str, capital: float, prev_close: float, result_a: dict,
         print("  Checks:")
         for name, passed in result["checks"].items():
             print(f"    [{'PASS' if passed else 'fail'}] {name}")
+        if result.get("vwap_basis"):
+            print(f"  VWAP basis: {result['vwap_basis']}")
         ind = result["indicators"]
         print(f"  Indicators: close={_fmt(ind.get('close'))} rsi={_fmt(ind.get('rsi'))} "
               + " ".join(f"{k}={_fmt(v)}" for k, v in ind.items() if k not in ("close", "rsi")))

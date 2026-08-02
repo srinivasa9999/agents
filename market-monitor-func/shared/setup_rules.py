@@ -109,6 +109,35 @@ def _vwap_crossed_and_held(candles: list[dict], vwap_series: list[float | None],
     return False
 
 
+def _vwap_held_since_open(candles: list[dict], vwap_series: list[float | None], i: int, direction: str) -> bool:
+    """True if price has been on `direction`'s correct side of VWAP for
+    every candle since VWAP first became computable (cum. volume > 0) -
+    i.e. the stock gapped away from VWAP before the first candle even
+    closed and never came back, so there is no crossing event to find at
+    any lookback, only a trend that started already on the right side.
+
+    This is the fallback for gap-and-hold days (real case: Bajaj Finance,
+    31 Jul 2026 - close already above cumulative VWAP at the very first
+    print of the day). It is intentionally strict - ANY candle on the
+    wrong side, ever, disqualifies it - so it only fires for a trend that
+    has genuinely never been tested, not a trend that dipped back through
+    VWAP earlier and is merely above/below it again now (that state alone
+    is exactly what the original VWAP-cross rule was written to rule out;
+    see the HDFC backtest note in TRADING_PLAN.md)."""
+    seen_any = False
+    for k in range(i + 1):
+        vk = vwap_series[k]
+        if vk is None:
+            continue
+        seen_any = True
+        ck = candles[k]["close"]
+        if direction == "long" and not (ck > vk):
+            return False
+        if direction == "short" and not (ck < vk):
+            return False
+    return seen_any
+
+
 def _day_extreme_move_pct(candles: list[dict], prev_close: float) -> float:
     """Largest absolute % move from prev_close across every candle's
     high/low (not just closes) - catches an intrabar spike a close-only
@@ -149,7 +178,10 @@ def evaluate_setup_a(candles: list[dict], prev_close: float) -> dict:
     checks["moved_enough"] = day_move_pct >= MOVE_FILTER_PCT
 
     v_now = vwap_series[i]
-    checks["vwap_cross"] = _vwap_crossed_and_held(candles, vwap_series, i, direction)
+    crossed_recently = _vwap_crossed_and_held(candles, vwap_series, i, direction)
+    held_since_open = (not crossed_recently) and _vwap_held_since_open(candles, vwap_series, i, direction)
+    checks["vwap_confirms_trend"] = crossed_recently or held_since_open
+    vwap_basis = "crossed_recently" if crossed_recently else ("held_since_open" if held_since_open else None)
 
     fast, slow = ema_fast[i], ema_slow[i]
     if fast is None or slow is None:
@@ -188,6 +220,7 @@ def evaluate_setup_a(candles: list[dict], prev_close: float) -> dict:
         "eligible": eligible,
         "checks": checks,
         "day_move_pct": round(day_move_pct, 2),
+        "vwap_basis": vwap_basis,  # "crossed_recently" / "held_since_open" / None - see checks docstrings
         "indicators": {
             "close": now["close"],
             "vwap": v_now,
