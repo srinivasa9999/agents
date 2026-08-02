@@ -171,6 +171,10 @@ def main() -> int:
 
     kite_symbol = args.symbol if ":" in args.symbol else f"NSE:{args.symbol}"
 
+    missing = [name for name in ("KITE_API_KEY", "AZURE_STORAGE_CONNECTION_STRING") if name not in os.environ]
+    if missing:
+        sys.exit(f"Missing required environment variable(s): {', '.join(missing)}. "
+                  f"See the REQUIRES section in this script's --help.")
     api_key = os.environ["KITE_API_KEY"]
     conn_str = os.environ["AZURE_STORAGE_CONNECTION_STRING"]
     table_name = os.environ.get("KITE_STATE_TABLE", "KiteAuthState")
