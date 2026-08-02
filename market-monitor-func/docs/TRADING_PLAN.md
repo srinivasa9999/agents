@@ -1,0 +1,153 @@
+# Trading Plan: Fixing the Fade-and-Average Loss Cycle
+
+> Personal rules document. Not financial advice, and no strategy guarantees a
+> win rate — the goal here is positive *expectancy*, which is what actually
+> compounds an account. Read the "Why win rate is the wrong target" section
+> first.
+
+## 1. The pattern that is losing money (name it honestly)
+
+The current behaviour, written out as a system:
+
+1. See a stock that has already moved ~±4% intraday.
+2. Assume "it can't go further" and take a position *against* the move
+   (fade / mean-reversion), with **no defined invalidation point**.
+3. If it reverts → book a small profit quickly.
+4. If it keeps going → **average into the loser**, increasing size exactly
+   when the market is proving the idea wrong.
+5. Occasionally the averaged position comes back → relief exit near breakeven.
+6. Sometimes it never comes back → one loss wipes out many small wins.
+
+This has three structural flaws, each individually enough to lose money
+long-term:
+
+- **The premise is statistically backwards.** A stock up/down 4% intraday is
+  showing *momentum*, and intraday returns have fat tails: large moves are
+  more likely to extend than the gut expects. "It won't go beyond X%" is a
+  feeling, not an edge. Circuit-limit stocks routinely move 8–20%. Fading
+  strength/weakness without a reversal signal is fighting the only
+  information the market has given you.
+- **No stop-loss = unlimited downside on a capped-upside trade.** Booking
+  small profits but letting losses run is a negatively skewed payoff. Even a
+  70% win rate loses money if the average loss is 5× the average win.
+- **Averaging a loser is doubling the bet after the thesis failed.** It
+  turns one wrong trade into a portfolio-threatening one, and it *feels*
+  good (lower breakeven) which is why it's so dangerous. Averaging is a
+  valid tool only when it was **planned before entry** (scaled entry at
+  pre-decided levels, with total size and stop fixed in advance) — never as
+  a reaction to being underwater.
+
+## 2. Why "more than 50% win rate" is the wrong target
+
+Profitability = `(win% × avg win) − (loss% × avg loss)`.
+
+| Style | Win rate | Avg win : avg loss | Outcome |
+|---|---|---|---|
+| Current (fade + average) | often 60–70% | 1 : 4 or worse | **Loses** |
+| Trend-following | 35–45% | 3 : 1 | Wins |
+| Disciplined mean-reversion | 55–65% | 1 : 1 | Wins |
+
+A 40%-win-rate system with 2.5:1 reward:risk makes money; a 70%-win-rate
+system with 1:4 loses. The fix is not "find a signal that's right more
+often" — it is **capping the loss per trade so the ratio flips**. Once
+losses are capped at 1R, even a modest win rate is profitable.
+
+## 3. Non-negotiable risk rules (these matter more than the entry signal)
+
+1. **Risk per trade: max 1% of trading capital.** Position size is *derived*
+   from the stop distance, never chosen first:
+   `qty = (capital × 1%) ÷ (entry − stop)`.
+2. **Every order has a stop-loss placed at entry time** — an actual SL order
+   on Kite, not a mental level. If you can't say where the idea is wrong,
+   you don't have a trade.
+3. **Never add to a losing position.** Zero exceptions. Adding is allowed
+   only to a *winning* position after a stop can be moved to breakeven.
+4. **Daily loss limit: 2% of capital (≈2 losing trades).** Hit it → close
+   the terminal for the day. Revenge trading after two stops is how the big
+   losses happen.
+5. **Minimum reward:risk of 1.5:1 at entry**, measured to a real level
+   (pivot, prior day high/low, VWAP), not a hope. If the target is closer
+   than 1.5× the stop distance, skip the trade.
+6. **Weekly circuit-breaker:** down 5% on the week → no trades until Monday,
+   review the journal instead.
+
+## 4. Two rule-based setups (pick ONE and trade only it for 30 sessions)
+
+### Setup A — Trade *with* the 4% move (momentum continuation)
+
+Instead of fading the day's big mover, join it on a controlled pullback:
+
+- **Filter:** stock moved ≥3–4% from previous close on above-average volume,
+  no pending news/results lottery (check the news alerts this repo already
+  sends).
+- **Entry:** wait for the first pullback that holds **above VWAP** (for a
+  long; below VWAP for a short) and enter on the break of the pullback's
+  high/low. No pullback = no trade; chasing the vertical move is forbidden.
+- **Stop:** below the pullback low (long) / above the pullback high (short).
+- **Target:** 2R, or trail below higher lows once past 1.5R.
+- **Exit by 15:10 IST regardless** — no overnight conversion of an intraday
+  trade ("it will recover tomorrow" is averaging in disguise).
+
+### Setup B — Mean-reversion done properly (if fading is the preference)
+
+Fading extremes can work, but only with a *location* and an *invalidation*:
+
+- **Filter:** the move is ≥4% **into a pre-identified level** — pivot
+  R2/R3 or S2/S3 (this repo already computes these daily), prior day
+  high/low, or a top-OI strike acting as resistance/support. A 4% move in
+  the middle of nowhere is not a fade candidate.
+- **Trigger:** do not catch the falling/rising knife. Wait for a reversal
+  bar on the 15-minute chart (close back inside the level, or a lower-high
+  after the extreme). The trigger is what separates this from the current
+  losing behaviour.
+- **Stop:** just beyond the extreme of the move (the high/low of the spike).
+  If price takes out that extreme, the reversion idea is *dead* — exit, do
+  not average.
+- **Target:** first scale at 1R (e.g. VWAP), rest at 2R. This keeps the win
+  rate high without the fatal left tail.
+- **Hard rule:** one attempt per stock per day. Stopped out = done with that
+  name today.
+
+## 5. Use the alert system in this repo as the discipline layer
+
+The monitor already watches open positions (`positions:` in
+`config/config.yaml`). Tune it to nag *before* a loss becomes a disaster,
+not after:
+
+- `ltp_move_pct_threshold: 15` is far too wide for trades built around
+  ±4% moves — by the time it fires the account is already badly hurt.
+  Set it to **2–3%** so Telegram pings when price moves against the average
+  entry by roughly the planned stop distance.
+- Set `pnl_percentage_threshold` and `pnl_absolute_threshold_rupees` to the
+  **1R values from rule 3.1** (e.g. 1% of capital in rupees), so an alert
+  firing means "your stop should already have executed — check it."
+- Treat any position alert on a *loser* as a hard instruction: verify the SL
+  order exists and has not been cancelled/moved. Moving a stop further away
+  is averaging by another name.
+- The pivot levels and top-OI strikes the system already publishes each
+  morning are the pre-identified levels Setup B requires — write down the
+  day's fade zones *before* 09:15, and only fade into those.
+
+## 6. Journal and review (how the win rate actually improves)
+
+For every trade, record: date, symbol, setup (A or B — anything else is an
+error), entry, stop, size, planned R:R, exit, realised R, and one line on
+whether the rules were followed. After 30 sessions:
+
+- Rule-compliant trades vs. violations, and the P&L of each bucket. Almost
+  always the violations account for the losses — that is the evidence that
+  keeps discipline honest.
+- Expectancy = average realised R per trade. Positive expectancy with 40
+  trades of data is the green light to size up gradually (1% → 1.25% risk),
+  and not before.
+
+## 7. Hard prohibitions (the list that protects the account)
+
+- No trade without a pre-placed stop-loss order.
+- No averaging losers, no "one more lot to lower my average."
+- No removing or widening a stop after entry.
+- No trading in the first 15 minutes (09:15–09:30) — opening spikes are
+  where the fade instinct gets punished worst.
+- No overnight carry of a failed intraday position.
+- No trading after the daily loss limit; no new setup ideas mid-week —
+  changes to this plan are made on weekends only, in writing, here.
