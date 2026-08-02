@@ -1,0 +1,297 @@
+<title>Swiggy, 31 Jul 2026 — real Kite data backtest</title>
+<style>
+  :root {
+    --surface: #fcfcfb; --page: #f9f9f7; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11, 11, 11, 0.10);
+    --price: #2a78d6; --fade: #eb6834; --good: #0ca30c; --good-text: #006300; --critical: #d03b3b; --tile: #f4f3f0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      --surface: #1a1a19; --page: #0d0d0d; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10);
+      --price: #3987e5; --fade: #d95926; --good: #0ca30c; --good-text: #0ca30c; --critical: #e66767; --tile: #222221;
+    }
+  }
+  :root[data-theme="dark"] {
+    --surface: #1a1a19; --page: #0d0d0d; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10);
+    --price: #3987e5; --fade: #d95926; --good: #0ca30c; --good-text: #0ca30c; --critical: #e66767; --tile: #222221;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 40px 20px 72px; }
+  .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+  h1 { font-size: clamp(24px, 4vw, 34px); line-height: 1.15; margin: 0 0 10px; letter-spacing: -0.015em; text-wrap: balance; }
+  .lede { color: var(--ink-2); max-width: 64ch; margin: 0 0 26px; }
+  h2 { font-size: 19px; margin: 0 0 4px; letter-spacing: -0.01em; text-wrap: balance; }
+  .sub { color: var(--ink-2); font-size: 14px; margin: 0 0 14px; max-width: 68ch; }
+  section { margin-top: 44px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .tile .k { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .tile .v { font-size: 21px; font-weight: 650; margin-top: 2px; }
+  .tile .d { font-size: 12px; color: var(--ink-2); margin-top: 1px; }
+  .up { color: var(--good-text); } .dn { color: var(--critical); }
+  .num { font-variant-numeric: tabular-nums; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 16px 10px; position: relative; }
+  .chart-box { position: relative; }
+  .chart-box svg { display: block; width: 100%; height: auto; }
+  svg text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 4px 6px; font-size: 12.5px; color: var(--ink-2); }
+  .legend .it { display: inline-flex; align-items: center; gap: 7px; }
+  .sw { width: 16px; height: 0; border-top: 2.5px solid; border-radius: 2px; }
+  .sw.dash { border-top-style: dashed; }
+  .tri-buy { width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 8px solid var(--critical); display: inline-block; }
+  .tri-sell { width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 8px solid var(--good); display: inline-block; }
+  .tip { position: absolute; pointer-events: none; display: none; z-index: 5; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; box-shadow: 0 4px 14px rgba(0,0,0,0.18); padding: 7px 10px; font-size: 12.5px; line-height: 1.45; white-space: nowrap; }
+  .tip b { font-variant-numeric: tabular-nums; }
+  .ledger { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+  @media (max-width: 640px) { .ledger { grid-template-columns: 1fr; } }
+  .trade { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; border-top: 3px solid var(--critical); }
+  .trade.win { border-top-color: var(--good); }
+  .trade h3 { margin: 0 0 2px; font-size: 15px; }
+  .trade .tag { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .trade table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 10px; }
+  .trade td { padding: 4px 0; border-bottom: 1px solid var(--grid); vertical-align: top; }
+  .trade td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .trade tr:last-child td { border-bottom: 0; }
+  .pnl { font-size: 24px; font-weight: 700; margin-top: 10px; }
+  .pnl small { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+  .note { border-left: 3px solid var(--axis); padding: 2px 0 2px 14px; color: var(--ink-2); font-size: 14px; max-width: 70ch; margin-top: 18px; }
+  .note.warn { border-left-color: var(--critical); }
+  .note.hl { border-left-color: var(--good); }
+  details { margin-top: 12px; font-size: 13px; color: var(--ink-2); }
+  summary { cursor: pointer; font-weight: 600; color: var(--ink-2); }
+  .scrolltbl { overflow-x: auto; }
+  .foot { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--grid); font-size: 12.5px; color: var(--muted); max-width: 74ch; }
+  .src { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--good-text); background: color-mix(in srgb, var(--good) 12%, transparent); border-radius: 5px; padding: 2px 7px; margin-left: 8px; vertical-align: middle; }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">TRADING_PLAN.md &middot; backtest on real Kite historical data</p>
+  <h1>Swiggy, 31 Jul 2026 <span class="src">✓ live Kite data</span></h1>
+  <p class="lede">
+    The messiest of the four sessions so far: a violent crash-and-V-recovery in the first six
+    minutes, a failed rally back toward the previous close, then a long, grinding slide into a
+    real −3.7% close. This is what most real trading days look like — not a clean spike, not a
+    clean trend, just noise with a direction buried in it.
+  </p>
+
+  <div class="stats">
+    <div class="tile"><div class="k">Prev close (30 Jul)</div><div class="v num">₹295.91</div></div>
+    <div class="tile"><div class="k">Open, 09:15</div><div class="v num">₹290.00</div><div class="d num dn">−2.0%</div></div>
+    <div class="tile"><div class="k">Day low, 09:18</div><div class="v num">₹280.20</div><div class="d">inside the no-trade window</div></div>
+    <div class="tile"><div class="k">Rally high, 10:09</div><div class="v num">₹294.59</div><div class="d">fails to reclaim prev close</div></div>
+    <div class="tile"><div class="k">Official close</div><div class="v num">₹284.86</div><div class="d num dn">−3.73%</div></div>
+  </div>
+
+  <section>
+    <h2>1 &middot; The real session, both playbooks marked on it</h2>
+    <p class="sub">
+      Real 3-minute closes. Red: buying the afternoon dip three times because "it rallied to
+      ₹294 this morning, it'll come back" — no stop. Green: the plan's Setup&nbsp;A short,
+      triggered only once price actually lost its VWAP hold, well after the opening chaos.
+    </p>
+    <div class="card">
+      <div class="legend">
+        <span class="it"><span class="sw" style="border-color:var(--price)"></span>Price (real 3-min closes)</span>
+        <span class="it"><span class="sw dash" style="border-color:var(--muted)"></span>VWAP (volume-weighted, real)</span>
+        <span class="it"><span class="tri-buy"></span>Old habit: averaged buys</span>
+        <span class="it"><span class="tri-sell"></span>Plan Setup A: short the VWAP loss</span>
+      </div>
+      <div class="chart-box" id="priceBox"></div>
+      <div class="tip" id="priceTip"></div>
+    </div>
+    <p class="note warn">
+      Look at the first six minutes: open ₹290 → low ₹280.20 → back to ₹287, a ₹14 round trip
+      before 09:21. Anyone trading that live was pricing in pure noise. It's also the single
+      cleanest illustration yet of why rule 7 is a blanket ban and not a judgment call — there
+      was no way to tell, in real time, whether ₹280.20 was "the bottom" or the start of a real
+      leg down.
+    </p>
+  </section>
+
+  <section>
+    <h2>2 &middot; Setup B check: the fade that rule 7 took off the table</h2>
+    <p class="sub">
+      Swiggy's previous session (30 Jul) had a low of ₹281.23. Today's low, ₹280.20, undercut it
+      by almost nothing — a textbook Setup B location: a real prior-day level, tested and reversed
+      within minutes (the close back above ₹287 in the very same window counts as the reversal
+      trigger).
+    </p>
+    <p class="note hl">
+      It would have worked. It's also entirely inside the 09:15–09:30 window — the whole round
+      trip happens by 09:21. Same conclusion as Bajaj Finance's opening spike and Hyundai's: a
+      setup that technically qualifies but falls inside rule 7 is not a trade, full stop. The rule
+      doesn't get an exception for the one that would have paid off.
+    </p>
+  </section>
+
+  <section>
+    <h2>3 &middot; The ledger, filled at real prices</h2>
+    <p class="sub">₹5,00,000 capital. Every fill below is an actual traded price from the session.</p>
+    <div class="ledger">
+      <div class="trade">
+        <div class="tag">Old habit</div>
+        <h3>Buy the dip, average, hope for the morning high again</h3>
+        <table>
+          <tr><td>11:18 buy 1,500 @ <span class="num">₹289.11</span></td><td>"just a pullback from ₹294"</td></tr>
+          <tr><td>11:48 buy 1,500 @ <span class="num">₹286.38</span></td><td>average #1</td></tr>
+          <tr><td>14:00 buy 1,500 @ <span class="num">₹285.41</span></td><td>average #2</td></tr>
+          <tr><td>Close mark @ <span class="num">₹284.78</span> &middot; unsquared</td><td>no exit plan</td></tr>
+          <tr><td>Avg entry <span class="num">₹286.97</span> &middot; no stop</td><td>risk: unbounded</td></tr>
+        </table>
+        <div class="pnl dn num">−₹9,855 <small>the biggest real loss of the four sessions</small></div>
+      </div>
+      <div class="trade win">
+        <div class="tag">Plan &middot; Setup A (short)</div>
+        <h3>Short the VWAP break, not the crash</h3>
+        <table>
+          <tr><td>09:15–09:30 no trading</td><td>rule 7</td></tr>
+          <tr><td>11:15 short 3,500 @ <span class="num">₹288.80</span></td><td>closes below VWAP for the first time</td></tr>
+          <tr><td>Stop <span class="num">₹290.20</span> (above the VWAP retest)</td><td>risk ₹1.40/sh = ₹4,900</td></tr>
+          <tr><td>11:30 cover 3,500 @ <span class="num">₹286.00</span></td><td>+2R target, 15 minutes later</td></tr>
+          <tr><td>Worst case if wrong</td><td class="num">−₹4,900 (−1R)</td></tr>
+        </table>
+        <div class="pnl up num">+₹9,800 <small>= +2.00R, fastest trade of the four sessions</small></div>
+      </div>
+    </div>
+    <p class="note">
+      This is the sharpest contrast of the four backtests: the old habit bought three dips in a
+      stock that just kept sliding, with no bounce big enough to bail any of them out, for the
+      largest real loss in this series. The plan trade needed one clean signal — losing VWAP after
+      a failed retest — and was done in 15 minutes for a full 2R. Same session, same stock,
+      completely different risk profile.
+    </p>
+  </section>
+
+  <div class="foot">
+    All prices above are real 3-minute OHLC candles for NSE:SWIGGY on 31 Jul 2026, pulled directly
+    from your authenticated Kite session (instrument 6928897). Day OHLC: open ₹290.00, high
+    ₹294.59, low ₹280.20, close ₹284.86. Prev close ₹295.91 (30 Jul day candle). VWAP is computed
+    from real typical-price × volume across all 125 candles. The old-habit and plan fills are real
+    closes from that series, chosen at the points the plan's rules would actually have triggered;
+    stop levels are the invalidation prices a trader would have set, not traded prints. Not
+    investment advice.
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  function tok(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+  var NS = "http://www.w3.org/2000/svg";
+  function el(name, attrs, parent) {
+    var e = document.createElementNS(NS, name);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function fmtINR(v, dp) { return "₹" + v.toLocaleString("en-IN", { minimumFractionDigits: dp || 0, maximumFractionDigits: dp || 0 }); }
+
+  function render() {
+  var PREV = 295.91;
+  var STEP = 3, N = 125, TMAX = (N - 1) * STEP;
+  var closes = [283.45,287,290.01,292,291.06,289.24,288.08,287.56,288.85,288.88,288.71,290.62,290.87,291,290.68,290.09,290.79,291.14,293.5,293.19,293.69,293.57,293.1,293.35,292.6,292.41,293.09,293.32,293.24,293.2,293.15,292.24,291.31,291.26,291.84,291.83,291.5,291.97,290.31,290,288.8,289.11,288.02,287.25,286.23,285.98,286.21,286.4,286.4,285.95,285.41,286.38,285.34,285.65,284.95,285.2,285.63,285.79,285.58,285.86,285.89,285.37,285.71,285.59,286.41,285.9,286.61,286.51,286.1,286.3,286.12,286.25,285.71,285.45,285.4,285.77,286.1,286.15,285.41,286.01,286.12,286.34,286.09,285.28,285,285.69,285.44,285.62,285.78,285.21,285.63,285.62,285.83,285.7,285.85,285.41,284.98,285.04,284.89,285.3,285.57,285.67,285.37,285,284.98,285,285,284.95,284.72,284.75,284.87,284.95,284.68,284.68,284.65,284.32,284.9,284.18,284.52,284.79,285.1,285.4,285.19,284.87,284.78];
+  var vwap = [285.57,285.18,286.9,287.74,288.16,288.26,288.27,288.25,288.25,288.26,288.27,288.34,288.4,288.49,288.52,288.53,288.57,288.61,288.87,288.97,289.06,289.14,289.2,289.32,289.43,289.46,289.54,289.56,289.59,289.62,289.63,289.67,289.69,289.7,289.72,289.73,289.74,289.75,289.76,289.76,289.75,289.75,289.63,289.61,289.56,289.51,289.47,289.43,289.41,289.39,289.35,289.32,289.28,289.27,289.2,289.18,289.17,289.16,289.15,289.14,289.12,289.12,289.11,289.1,289.06,289.05,289.02,289.01,289.01,289,289,289,288.99,288.98,288.97,288.97,288.97,288.96,288.95,288.93,288.93,288.93,288.92,288.88,288.87,288.86,288.83,288.83,288.81,288.8,288.79,288.79,288.78,288.77,288.76,288.75,288.73,288.72,288.7,288.69,288.68,288.67,288.66,288.65,288.64,288.63,288.62,288.61,288.6,288.59,288.58,288.57,288.56,288.54,288.52,288.49,288.47,288.42,288.37,288.34,288.31,288.27,288.23,288.19,288.16];
+
+  function idx(t) { return Math.max(0, Math.min(N - 1, Math.round(t / STEP))); }
+
+  var W = 900, H = 380, m = { l: 56, r: 16, t: 18, b: 34 };
+  var pw = W - m.l - m.r, ph = H - m.t - m.b;
+  var yMin = 279, yMax = 296.5;
+  function X(t) { return m.l + (t / TMAX) * pw; }
+  function Y(p) { return m.t + (1 - (p - yMin) / (yMax - yMin)) * ph; }
+  function timeLabel(t) {
+    var mins = 9 * 60 + 15 + t, h = Math.floor(mins / 60), mm = mins % 60;
+    return (h < 10 ? "0" : "") + h + ":" + (mm < 10 ? "0" : "") + mm;
+  }
+
+  var box = document.getElementById("priceBox");
+  box.innerHTML = "";
+  var svg = el("svg", { viewBox: "0 0 " + W + " " + H, role: "img",
+    "aria-label": "Swiggy real intraday price 31 July 2026 with averaged buy-the-dip entries and the plan's Setup A short marked" }, box);
+
+  el("rect", { x: X(0), y: m.t, width: (X(15) - X(0)), height: ph, fill: tok("--muted"), opacity: 0.16 }, svg);
+
+  [280, 285, 290, 295].forEach(function (p) {
+    el("line", { x1: m.l, x2: W - m.r, y1: Y(p), y2: Y(p), stroke: tok("--grid"), "stroke-width": 1 }, svg);
+    el("text", { x: m.l - 8, y: Y(p) + 4, "text-anchor": "end", "font-size": 11.5,
+      fill: tok("--muted"), style: "font-variant-numeric:tabular-nums" }, svg).textContent = p.toLocaleString("en-IN");
+  });
+  [0, 60, 120, 180, 240, 300, TMAX].forEach(function (t) {
+    el("text", { x: X(t), y: H - 12, "text-anchor": t === 0 ? "start" : (t === TMAX ? "end" : "middle"),
+      "font-size": 11.5, fill: tok("--muted"), style: "font-variant-numeric:tabular-nums" }, svg).textContent = timeLabel(t);
+  });
+  el("line", { x1: m.l, x2: W - m.r, y1: m.t + ph, y2: m.t + ph, stroke: tok("--axis"), "stroke-width": 1 }, svg);
+
+  el("line", { x1: X(0), x2: W - m.r, y1: Y(295.91), y2: Y(295.91), stroke: tok("--ink-2"),
+    "stroke-width": 1.3, opacity: 0.6, "stroke-dasharray": "2 4" }, svg);
+  el("text", { x: W - m.r - 4, y: Y(295.91) - 6, "text-anchor": "end", "font-size": 11, fill: tok("--ink-2") }, svg).textContent = "prev close ₹295.91 — never reclaimed";
+
+  function pathD(arr) {
+    var d = "";
+    for (var i = 0; i < N; i++) { var t = i * STEP; d += (i ? "L" : "M") + X(t).toFixed(1) + " " + Y(arr[i]).toFixed(1); }
+    return d;
+  }
+  el("path", { d: pathD(vwap), fill: "none", stroke: tok("--muted"), "stroke-width": 1.6, "stroke-dasharray": "5 4", opacity: 0.9 }, svg);
+  el("path", { d: pathD(closes), fill: "none", stroke: tok("--price"), "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+
+  function tri(t, p, dir, color) {
+    var x = X(t), y = dir === "down" ? Y(p) - 9 : Y(p) + 9;
+    var d = dir === "down"
+      ? "M" + (x - 6.5) + " " + (y - 10) + " L" + (x + 6.5) + " " + (y - 10) + " L" + x + " " + y + " Z"
+      : "M" + (x - 6.5) + " " + (y + 10) + " L" + (x + 6.5) + " " + (y + 10) + " L" + x + " " + y + " Z";
+    el("path", { d: d, fill: color, stroke: tok("--surface"), "stroke-width": 2 }, svg);
+  }
+  function dot(t, p, color) { el("circle", { cx: X(t), cy: Y(p), r: 5.5, fill: color, stroke: tok("--surface"), "stroke-width": 2 }, svg); }
+  function label(t, p, dy, txt, color, anchor) {
+    el("text", { x: X(t), y: Y(p) + dy, "text-anchor": anchor || "middle", "font-size": 11.5, "font-weight": 600,
+      fill: color, stroke: tok("--surface"), "stroke-width": 3.5, "paint-order": "stroke", "stroke-linejoin": "round" }, svg).textContent = txt;
+  }
+
+  label(19, 281, -8, "✕ 290→280.20→291 in 6 min — inside rule 7", tok("--muted"), "start");
+  dot(3, 280.20, tok("--muted"));
+  label(3, 280.20, 24, "day low ₹280.20", tok("--muted"), "start");
+
+  tri(120, 288.80, "down", tok("--good")); label(115, 291.7, 0, "short 3,500 @288.80", tok("--good-text"), "end");
+  el("line", { x1: X(105), x2: X(120), y1: Y(290.20), y2: Y(290.20), stroke: tok("--good"), "stroke-width": 1.5, "stroke-dasharray": "5 4", opacity: 0.9 }, svg);
+  label(102, 290.20, -6, "stop ₹290.20", tok("--good-text"), "end");
+  dot(135, 286.00, tok("--good"));
+  label(139, 284.7, 0, "cover +2.00R  +₹9,800", tok("--good-text"), "start");
+
+  tri(123, 289.11, "up", tok("--critical")); label(129, 292.3, 0, "① buy 1,500 @289.11", tok("--critical"), "start");
+  tri(153, 286.38, "up", tok("--critical")); label(159, 288.3, 0, "② average @286.38", tok("--critical"), "start");
+  tri(285, 285.41, "up", tok("--critical")); label(279, 283.7, 0, "③ average @285.41", tok("--critical"), "end");
+  dot(TMAX, 284.78, tok("--critical"));
+  label(TMAX - 6, 282, 0, "unsquared @284.78  −₹9,855", tok("--critical"), "end");
+
+  var cross = el("line", { y1: m.t, y2: m.t + ph, stroke: tok("--axis"), "stroke-width": 1, opacity: 0 }, svg);
+  var hoverDot = el("circle", { r: 4, fill: tok("--price"), stroke: tok("--surface"), "stroke-width": 2, opacity: 0 }, svg);
+  var tip = document.getElementById("priceTip");
+  var hit = el("rect", { x: m.l, y: m.t, width: pw, height: ph, fill: "transparent" }, svg);
+  function priceMove(evt) {
+    var r = svg.getBoundingClientRect();
+    var t = Math.round(((evt.clientX - r.left) / r.width * W - m.l) / pw * TMAX);
+    t = Math.max(0, Math.min(TMAX, t));
+    var i = idx(t), p = closes[i], v = vwap[i], rt = i * STEP;
+    cross.setAttribute("x1", X(rt)); cross.setAttribute("x2", X(rt)); cross.setAttribute("opacity", 0.7);
+    hoverDot.setAttribute("cx", X(rt)); hoverDot.setAttribute("cy", Y(p)); hoverDot.setAttribute("opacity", 1);
+    tip.style.display = "block";
+    tip.innerHTML = timeLabel(rt) + " &middot; <b>" + fmtINR(p, 2) + "</b> &middot; " +
+      "<b>" + ((p / PREV - 1) * 100).toFixed(2) + "%</b> vs prev close<br>VWAP <b>" + fmtINR(v, 2) + "</b>";
+    var bx = box.getBoundingClientRect();
+    var left = (X(rt) / W) * bx.width + 14;
+    if (left + 210 > bx.width) left -= 235;
+    tip.style.left = left + "px"; tip.style.top = ((Y(p) / H) * bx.height - 14) + "px";
+  }
+  function priceOut() { cross.setAttribute("opacity", 0); hoverDot.setAttribute("opacity", 0); tip.style.display = "none"; }
+  hit.addEventListener("pointermove", priceMove);
+  hit.addEventListener("pointerleave", priceOut);
+  }
+
+  render();
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+  new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+})();
+</script>
