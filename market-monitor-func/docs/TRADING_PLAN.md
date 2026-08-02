@@ -92,10 +92,22 @@ Instead of fading the day's big mover, join it on a controlled pullback:
   ever being tested, which makes "holds above VWAP" trivially true and
   useless as a filter. No pullback-then-cross = no trade; chasing the
   vertical move is forbidden.
+- **Trend filter (9/20 EMA, 3-min chart):** at the moment of the
+  breakout entry, the 9 EMA must be above the 20 EMA for a long / below it
+  for a short. VWAP crossed but EMAs misaligned = skip, don't override one
+  indicator with the other.
+- **Momentum filter (14-period RSI, 3-min chart):** skip the entry if RSI is
+  already ≥75 (long) / ≤25 (short) at the breakout - that's chasing an
+  exhausted move, not joining a fresh pullback. Wait for RSI to cool back
+  under those levels or let the trade go.
 - **Stop:** below the pullback low (long) / above the pullback high (short).
 - **Target:** 2R, or trail below higher lows once past 1.5R. Treat 2R as the
   minimum bar that justifies taking the trade at entry (rule 5), not a
   guaranteed outcome - real fills often land closer to 1.5-2R.
+- **Tighten-to-breakeven trigger:** if price closes back through the 20 EMA
+  against the position, or RSI diverges against it (price makes a fresh
+  high/low that RSI doesn't confirm), move the stop to breakeven immediately
+  - independent of the 1.5R trail rule above.
 - **Exit by 15:10 IST regardless** — no overnight conversion of an intraday
   trade ("it will recover tomorrow" is averaging in disguise).
 
@@ -111,6 +123,10 @@ Fading extremes can work, but only with a *location* and an *invalidation*:
   bar on the 15-minute chart (close back inside the level, or a lower-high
   after the extreme). The trigger is what separates this from the current
   losing behaviour.
+- **Momentum-exhaustion confirmation (14-period RSI, 15-min chart):** the
+  reversal bar must coincide with RSI ≥70 (fading strength) or ≤30 (fading
+  weakness). Level + reversal bar without an RSI extreme = no trade; a
+  location alone isn't proof the move is exhausted.
 - **Stop:** just beyond the extreme of the move (the high/low of the spike).
   If price takes out that extreme, the reversion idea is *dead* — exit, do
   not average.
@@ -118,6 +134,22 @@ Fading extremes can work, but only with a *location* and an *invalidation*:
   rate high without the fatal left tail.
 - **Hard rule:** one attempt per stock per day. Stopped out = done with that
   name today.
+
+### Indicator reference (read manually off the chart, not yet automated)
+
+Every indicator below is a filter or a veto - none of them replace the core
+trigger (VWAP cross for A, reversal bar at a level for B). They add
+conditions, they don't substitute for one. This repo doesn't compute
+EMA/RSI for individual stocks yet (only VWAP, via the volume-weighted
+typical-price formula used in the backtests) - read these off your
+charting platform (e.g. the "Trend-Day Detector" indicator already on your
+TradingView charts) until/unless that's automated.
+
+| Indicator | Params | Timeframe | Used in |
+|---|---|---|---|
+| VWAP | volume-weighted, session-to-date | 3-min | Setup A (entry trigger) |
+| EMA | 9-period & 20-period | 3-min | Setup A (trend filter, breakeven trigger) |
+| RSI | 14-period | 3-min (Setup A) / 15-min (Setup B) | Both (exhaustion filter) |
 
 ### Backtest notes (real Kite data, 31 Jul 2026, 4 sessions)
 
@@ -140,6 +172,11 @@ more sessions get tested:
   not just the close.
 - **Setup A's disciplined side won all 4 sessions** (+0.63R to +2.00R), which
   is the reason for the two filter/entry clarifications above.
+- **EMA/RSI filters above are not yet backtested against these 4 sessions**
+  - they were added afterward. Before trusting them live, re-check each of
+  the four real entries against the EMA-alignment and RSI-exhaustion rules
+  to see whether they would have confirmed, vetoed, or made no difference.
+  Update this note once that's done.
 
 ## 5. Use the alert system in this repo as the discipline layer
 
