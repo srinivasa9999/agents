@@ -1,0 +1,428 @@
+<title>HDFC Bank, 31 Jul 2026 — real Kite data vs. the plan</title>
+<style>
+  :root {
+    --surface: #fcfcfb;
+    --page: #f9f9f7;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --price: #2a78d6;
+    --fade: #eb6834;
+    --good: #0ca30c;
+    --good-text: #006300;
+    --critical: #d03b3b;
+    --tile: #f4f3f0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      --surface: #1a1a19; --page: #0d0d0d; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10);
+      --price: #3987e5; --fade: #d95926; --good: #0ca30c; --good-text: #0ca30c;
+      --critical: #e66767; --tile: #222221;
+    }
+  }
+  :root[data-theme="dark"] {
+    --surface: #1a1a19; --page: #0d0d0d; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10);
+    --price: #3987e5; --fade: #d95926; --good: #0ca30c; --good-text: #0ca30c;
+    --critical: #e66767; --tile: #222221;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--page); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    line-height: 1.55; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 40px 20px 72px; }
+  .eyebrow {
+    font-size: 12px; font-weight: 600; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 10px;
+  }
+  h1 { font-size: clamp(24px, 4vw, 34px); line-height: 1.15; margin: 0 0 10px; letter-spacing: -0.015em; text-wrap: balance; }
+  .lede { color: var(--ink-2); max-width: 64ch; margin: 0 0 26px; }
+  h2 { font-size: 19px; margin: 0 0 4px; letter-spacing: -0.01em; text-wrap: balance; }
+  .sub { color: var(--ink-2); font-size: 14px; margin: 0 0 14px; max-width: 68ch; }
+  section { margin-top: 44px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .tile .k { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .tile .v { font-size: 21px; font-weight: 650; margin-top: 2px; }
+  .tile .d { font-size: 12px; color: var(--ink-2); margin-top: 1px; }
+  .up { color: var(--good-text); } .dn { color: var(--critical); }
+  .num { font-variant-numeric: tabular-nums; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 16px 10px; position: relative; }
+  .chart-box { position: relative; }
+  .chart-box svg { display: block; width: 100%; height: auto; }
+  svg text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 4px 6px; font-size: 12.5px; color: var(--ink-2); }
+  .legend .it { display: inline-flex; align-items: center; gap: 7px; }
+  .sw { width: 16px; height: 0; border-top: 2.5px solid; border-radius: 2px; }
+  .sw.dash { border-top-style: dashed; }
+  .tri-buy { width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 8px solid var(--critical); display: inline-block; }
+  .tri-sell { width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 8px solid var(--good); display: inline-block; }
+  .tip {
+    position: absolute; pointer-events: none; display: none; z-index: 5;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 7px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18); padding: 7px 10px; font-size: 12.5px; line-height: 1.45; white-space: nowrap;
+  }
+  .tip b { font-variant-numeric: tabular-nums; }
+  .ledger { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+  @media (max-width: 640px) { .ledger { grid-template-columns: 1fr; } }
+  .trade { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; border-top: 3px solid var(--critical); }
+  .trade.win { border-top-color: var(--good); }
+  .trade h3 { margin: 0 0 2px; font-size: 15px; }
+  .trade .tag { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .trade table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 10px; }
+  .trade td { padding: 4px 0; border-bottom: 1px solid var(--grid); vertical-align: top; }
+  .trade td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .trade tr:last-child td { border-bottom: 0; }
+  .pnl { font-size: 24px; font-weight: 700; margin-top: 10px; }
+  .pnl small { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+  .note { border-left: 3px solid var(--axis); padding: 2px 0 2px 14px; color: var(--ink-2); font-size: 14px; max-width: 70ch; margin-top: 18px; }
+  .note.hl { border-left-color: var(--good); }
+  details { margin-top: 12px; font-size: 13px; color: var(--ink-2); }
+  summary { cursor: pointer; font-weight: 600; color: var(--ink-2); }
+  details table { border-collapse: collapse; margin-top: 8px; width: 100%; max-width: 560px; }
+  details th, details td { text-align: right; padding: 3px 10px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+  details th:first-child, details td:first-child { text-align: left; }
+  details th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .scrolltbl { overflow-x: auto; }
+  .foot { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--grid); font-size: 12.5px; color: var(--muted); max-width: 74ch; }
+  .src { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--good-text);
+    background: color-mix(in srgb, var(--good) 12%, transparent); border-radius: 5px; padding: 2px 7px; margin-left: 8px; vertical-align: middle; }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">TRADING_PLAN.md &middot; verified against real Kite historical data</p>
+  <h1>HDFC Bank, 31 Jul 2026 <span class="src">✓ live Kite data</span></h1>
+  <p class="lede">
+    This replaces the earlier reconstruction with the actual 3-minute candles from your Kite
+    session. The overall read holds up — spike at the open, grind lower most of the day — but
+    the real path is choppier than a clean trend, and it corrects two numbers: the close was
+    <strong>₹748.15</strong>, and the day's high (₹757.55) happened to print exactly at the open,
+    which puts it entirely inside rule&nbsp;7's no-trade window.
+  </p>
+
+  <div class="stats">
+    <div class="tile"><div class="k">Prev close (30 Jul)</div><div class="v num">₹753.95</div></div>
+    <div class="tile"><div class="k">Day high, 09:15</div><div class="v num">₹757.55</div><div class="d">inside the no-trade window</div></div>
+    <div class="tile"><div class="k">Pivot &middot; 751 level</div><div class="v num">₹751.00</div><div class="d">capped price 3 separate times</div></div>
+    <div class="tile"><div class="k">Day low, 15:24</div><div class="v num">₹747.20</div><div class="d num dn">−1.3%</div></div>
+    <div class="tile"><div class="k">Official close</div><div class="v num">₹748.15</div><div class="d num dn">−5.80 / −0.77%</div></div>
+  </div>
+
+  <section>
+    <h2>1 &middot; The real session, both playbooks marked on it</h2>
+    <p class="sub">
+      Real 3-minute closes, not a reconstruction. Red: buying every dip and averaging twice
+      more as it kept breaking down. Green: the plan's Setup&nbsp;A short, entered only once the
+      afternoon range genuinely broke down — not on the open spike, which rule&nbsp;7 rules out.
+    </p>
+    <div class="card">
+      <div class="legend">
+        <span class="it"><span class="sw" style="border-color:var(--price)"></span>Price (real 3-min closes)</span>
+        <span class="it"><span class="sw dash" style="border-color:var(--muted)"></span>VWAP (volume-weighted, real)</span>
+        <span class="it"><span class="tri-buy"></span>Old habit: averaged buys</span>
+        <span class="it"><span class="tri-sell"></span>Plan Setup A: short the breakdown</span>
+      </div>
+      <div class="chart-box" id="priceBox"></div>
+      <div class="tip" id="priceTip"></div>
+    </div>
+    <p class="note">
+      The day is messier than the earlier illustration suggested: after the open, price didn't
+      crash in one clean move — it chopped in a ₹749–752 range for four hours, tapping ₹751 three
+      separate times (09:48, 11:03, 13:06) before a real breakdown only showed up after 14:00.
+      That's normal. Most sessions aren't clean trend days, and the discipline is the same either
+      way: no entry until the range actually breaks, not on the first dip toward a round number.
+    </p>
+  </section>
+
+  <section>
+    <h2>2 &middot; The ledger, filled at real prices</h2>
+    <p class="sub">₹5,00,000 capital. Every fill below is an actual traded price from the session, not a rounded illustration.</p>
+    <div class="ledger">
+      <div class="trade">
+        <div class="tag">Old habit</div>
+        <h3>Buy the dip, average, hope</h3>
+        <table>
+          <tr><td>09:36 buy 1,500 @ <span class="num">₹749.70</span></td><td>"oversold, must bounce"</td></tr>
+          <tr><td>11:51 buy 1,500 @ <span class="num">₹748.70</span></td><td>average #1</td></tr>
+          <tr><td>14:18 buy 1,500 @ <span class="num">₹748.25</span></td><td>average #2</td></tr>
+          <tr><td>Close mark @ <span class="num">₹748.15</span> &middot; unsquared</td><td>no exit plan</td></tr>
+          <tr><td>Avg entry <span class="num">₹748.88</span> &middot; no stop</td><td>risk: unbounded</td></tr>
+        </table>
+        <div class="pnl dn num">−₹3,300 <small>real loss, and this was a quiet 1.5% range day</small></div>
+      </div>
+      <div class="trade win">
+        <div class="tag">Plan &middot; Setup A (short)</div>
+        <h3>Short the real breakdown, not the dip</h3>
+        <table>
+          <tr><td>09:15–09:30 no trading</td><td>rule 7</td></tr>
+          <tr><td>14:03 short 3,700 @ <span class="num">₹748.80</span></td><td>midday range genuinely breaks</td></tr>
+          <tr><td>Stop <span class="num">₹750.15</span> (above the range)</td><td>risk ₹1.35/sh = ₹4,995</td></tr>
+          <tr><td>15:00 cover 3,700 @ <span class="num">₹747.95</span></td><td>square off, +0.63R</td></tr>
+          <tr><td>Worst case if wrong</td><td class="num">−₹4,995 (−1R)</td></tr>
+        </table>
+        <div class="pnl up num">+₹3,145 <small>modest, real, and the loss was never more than ₹4,995</small></div>
+      </div>
+    </div>
+    <p class="note hl">
+      Notice the plan trade didn't hit a clean 2R — real fills rarely land on round numbers. That's
+      the honest point: the win doesn't need to be dramatic. What matters is that its downside was
+      fixed at ₹4,995 before the trade was ever placed, while the averaging trade's downside was
+      never fixed at all — and on a bigger down day than this one, that's the difference between
+      a small write-off and the "huge loss" you described.
+    </p>
+  </section>
+
+  <section>
+    <h2>3 &middot; Why &gt;50% win rate is still the wrong target</h2>
+    <p class="sub">
+      Forty simulated trades per style, same shape as before. Averaging into every dip or spike
+      <strong>wins 70%</strong> of the time (+0.4R average) but its losers average −1.8R, and
+      twice per cycle a "this has to turn around" position runs to −5R or worse. The plan wins
+      only <strong>45%</strong> of the time and still finishes ahead, because every loss is capped
+      at −1R and every win is +2R.
+    </p>
+    <div class="card">
+      <div class="legend">
+        <span class="it"><span class="sw" style="border-color:var(--price)"></span>Plan: 45% wins &middot; +2R / −1R &middot; expectancy +0.35R</span>
+        <span class="it"><span class="sw" style="border-color:var(--fade)"></span>Average-the-loser: 70% wins &middot; +0.4R / −1.8R avg, fat left tail &middot; expectancy −0.47R</span>
+      </div>
+      <div class="chart-box" id="eqBox"></div>
+      <div class="tip" id="eqTip"></div>
+    </div>
+    <details>
+      <summary>Data table — cumulative R after each trade</summary>
+      <div class="scrolltbl" id="eqTable"></div>
+    </details>
+  </section>
+
+  <div class="foot">
+    All prices in §1–2 are real 3-minute OHLC candles for NSE:HDFCBANK on 31 Jul 2026, pulled
+    directly from your authenticated Kite session (instrument 341249). Day OHLC: open ₹753.95,
+    high ₹757.55, low ₹747.20, close ₹748.15 — the −5.80/−0.77% change matches your TradingView
+    screenshot exactly. VWAP is computed from real typical-price × volume across all 125 candles.
+    The old-habit and plan fills above are real closes from that series, chosen at the points the
+    plan's rules would actually have triggered; the stop levels are the invalidation prices a
+    trader would have set, not traded prints. The 40-trade sequence in §3 remains a generic
+    illustrative simulation. Not investment advice.
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  function tok(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+  var NS = "http://www.w3.org/2000/svg";
+  function el(name, attrs, parent) {
+    var e = document.createElementNS(NS, name);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function fmtINR(v, dp) { return "₹" + v.toLocaleString("en-IN", { minimumFractionDigits: dp || 0, maximumFractionDigits: dp || 0 }); }
+
+  function render() {
+  // ---------- 1. REAL 3-minute closes, NSE:HDFCBANK, 31 Jul 2026 (Kite) ----------
+  var PREV = 753.95;
+  var STEP = 3, N = 125, TMAX = (N - 1) * STEP; // 372
+  var closes = [755.3,752.95,752.1,752,752.3,750.8,749.35,749.7,750.65,752.1,752.15,751.05,751,751.8,751.8,751.1,751.1,750.25,750.95,750.6,750.25,750.55,750.3,750.1,750.05,750.05,750.05,750.15,750.1,750.05,750.25,750,750,750,750.05,750.05,750.9,750.4,750.2,750.3,750,750.55,750.55,750.6,750.75,750.45,750.1,749.85,749.15,749.1,749.1,749.1,748.7,748.6,748.75,748.65,749,749.3,749.05,749.6,749.3,748.75,749.15,749.05,749.1,749.05,749.7,749.9,749.6,749.85,750,750.45,750.1,750.3,750.3,750.6,750.8,750.95,750.75,750.7,750.55,750.65,750.5,750.65,750.5,750.4,750.4,750.35,750.15,749.85,749.55,749.6,749.65,749.85,750,749.55,748.8,748.85,748.8,748.85,748.45,748.25,748.6,748.95,748.45,748.5,748.85,749.15,749.15,748.6,748.5,748.8,748.15,748.15,748.05,747.95,748,748.3,748.4,748.55,748.2,747.65,747.7,747.65,748];
+  var vwap = [755.6,754.83,753.84,753.62,753.47,753.23,752.81,752.64,752.46,752.41,752.39,752.34,752.27,752.23,752.22,752.19,752.16,752.12,752.08,752.04,751.96,751.9,751.88,751.85,751.84,751.82,751.79,751.74,751.7,751.67,751.66,751.64,751.62,751.6,751.58,751.57,751.53,751.52,751.5,751.49,751.47,751.46,751.46,751.44,751.43,751.42,751.4,751.39,751.36,751.34,751.32,751.31,751.3,751.24,751.21,751.19,751.18,751.17,751.16,751.12,751.11,751.08,751.08,751.07,751.05,751.04,751.02,751.02,751.01,750.99,750.98,750.98,750.97,750.97,750.96,750.95,750.95,750.95,750.95,750.95,750.95,750.94,750.94,750.94,750.94,750.93,750.93,750.93,750.92,750.9,750.89,750.88,750.87,750.87,750.86,750.86,750.83,750.8,750.79,750.78,750.75,750.69,750.68,750.67,750.65,750.63,750.62,750.6,750.58,750.57,750.55,750.53,750.51,750.49,750.47,750.34,750.21,750.1,750.01,749.77,749.71,749.65,749.58,749.52,749.49];
+
+  function idx(t) { return Math.max(0, Math.min(N - 1, Math.round(t / STEP))); }
+  function P(t) { return closes[idx(t)]; }
+
+  var W = 900, H = 380, m = { l: 56, r: 16, t: 18, b: 34 };
+  var pw = W - m.l - m.r, ph = H - m.t - m.b;
+  var yMin = 746.4, yMax = 758.4;
+  function X(t) { return m.l + (t / TMAX) * pw; }
+  function Y(p) { return m.t + (1 - (p - yMin) / (yMax - yMin)) * ph; }
+  function timeLabel(t) {
+    var mins = 9 * 60 + 15 + t, h = Math.floor(mins / 60), mm = mins % 60;
+    return (h < 10 ? "0" : "") + h + ":" + (mm < 10 ? "0" : "") + mm;
+  }
+
+  var box = document.getElementById("priceBox");
+  box.innerHTML = "";
+  var svg = el("svg", { viewBox: "0 0 " + W + " " + H, role: "img",
+    "aria-label": "HDFC Bank real intraday price 31 July 2026 with averaged buy-the-dip entries and the plan's Setup A short marked" }, box);
+
+  el("rect", { x: X(0), y: m.t, width: (X(15) - X(0)), height: ph, fill: tok("--muted"), opacity: 0.16 }, svg);
+
+  [747, 749, 751, 753, 755, 757].forEach(function (p) {
+    el("line", { x1: m.l, x2: W - m.r, y1: Y(p), y2: Y(p), stroke: tok("--grid"), "stroke-width": 1 }, svg);
+    el("text", { x: m.l - 8, y: Y(p) + 4, "text-anchor": "end", "font-size": 11.5,
+      fill: tok("--muted"), style: "font-variant-numeric:tabular-nums" }, svg).textContent = p.toLocaleString("en-IN");
+  });
+  [0, 60, 120, 180, 240, 300, TMAX].forEach(function (t) {
+    el("text", { x: X(t), y: H - 12, "text-anchor": t === 0 ? "start" : (t === TMAX ? "end" : "middle"),
+      "font-size": 11.5, fill: tok("--muted"), style: "font-variant-numeric:tabular-nums" }, svg).textContent = timeLabel(t);
+  });
+  el("line", { x1: m.l, x2: W - m.r, y1: m.t + ph, y2: m.t + ph, stroke: tok("--axis"), "stroke-width": 1 }, svg);
+
+  el("line", { x1: m.l, x2: W - m.r, y1: Y(757.55), y2: Y(757.55), stroke: tok("--critical"),
+    "stroke-width": 1, "stroke-dasharray": "2 5", opacity: 0.75 }, svg);
+  el("text", { x: W - m.r - 4, y: Y(757.55) - 6, "text-anchor": "end", "font-size": 11,
+    fill: tok("--critical") }, svg).textContent = "₹757.55 day high — printed inside the no-trade window";
+
+  el("line", { x1: X(0), x2: W - m.r, y1: Y(751.0), y2: Y(751.0), stroke: tok("--ink-2"),
+    "stroke-width": 1.3, opacity: 0.8 }, svg);
+  el("text", { x: X(65), y: Y(751.0) - 7, "text-anchor": "middle", "font-size": 11,
+    fill: tok("--ink-2") }, svg).textContent = "₹751.00 — capped price 3 times (09:48, 11:03, 13:06)";
+
+  el("line", { x1: X(270), x2: X(300), y1: Y(750.15), y2: Y(750.15), stroke: tok("--good"),
+    "stroke-width": 1.5, "stroke-dasharray": "5 4", opacity: 0.9 }, svg);
+  el("text", { x: X(302), y: Y(750.15) + 4, "font-size": 11, fill: tok("--good-text") }, svg).textContent = "stop ₹750.15";
+
+  function pathD(arr) {
+    var d = "";
+    for (var i = 0; i < N; i++) { var t = i * STEP; d += (i ? "L" : "M") + X(t).toFixed(1) + " " + Y(arr[i]).toFixed(1); }
+    return d;
+  }
+  el("path", { d: pathD(vwap), fill: "none", stroke: tok("--muted"), "stroke-width": 1.6, "stroke-dasharray": "5 4", opacity: 0.9 }, svg);
+  el("path", { d: pathD(closes), fill: "none", stroke: tok("--price"), "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+
+  function tri(t, p, dir, color) {
+    var x = X(t), y = dir === "down" ? Y(p) - 9 : Y(p) + 9;
+    var d = dir === "down"
+      ? "M" + (x - 6.5) + " " + (y - 10) + " L" + (x + 6.5) + " " + (y - 10) + " L" + x + " " + y + " Z"
+      : "M" + (x - 6.5) + " " + (y + 10) + " L" + (x + 6.5) + " " + (y + 10) + " L" + x + " " + y + " Z";
+    el("path", { d: d, fill: color, stroke: tok("--surface"), "stroke-width": 2 }, svg);
+  }
+  function dot(t, p, color) { el("circle", { cx: X(t), cy: Y(p), r: 5.5, fill: color, stroke: tok("--surface"), "stroke-width": 2 }, svg); }
+  function label(t, p, dy, txt, color, anchor) {
+    el("text", { x: X(t), y: Y(p) + dy, "text-anchor": anchor || "middle", "font-size": 11.5, "font-weight": 600,
+      fill: color, stroke: tok("--surface"), "stroke-width": 3.5, "paint-order": "stroke", "stroke-linejoin": "round" }, svg).textContent = txt;
+  }
+
+  dot(0, 757.55, tok("--muted"));
+  label(16, 757.55, 4, "day high ₹757.55 (09:15)", tok("--muted"), "start");
+  label(20, 754.6, 0, "✕ inside rule 7 — no fade taken", tok("--muted"), "start");
+
+  tri(21, 749.70, "up", tok("--critical")); label(21, 749.70, 32, "① buy 1,500 @749.70", tok("--critical"));
+  tri(156, 748.70, "up", tok("--critical")); label(156, 748.70, 32, "② average @748.70", tok("--critical"));
+  tri(303, 748.25, "up", tok("--critical")); label(248, 747.55, 0, "③ average @748.25", tok("--critical"), "end");
+  dot(TMAX, 748.15, tok("--critical"));
+  label(TMAX - 6, 753.6, 0, "unsquared @748.15", tok("--critical"), "end");
+  label(TMAX - 6, 754.5, 0, "−₹3,300 real loss", tok("--critical"), "end");
+
+  tri(288, 748.80, "down", tok("--good")); label(276, 752.4, 0, "short 3,700 @748.80", tok("--good-text"), "end");
+  dot(345, 747.95, tok("--good"));
+  label(324, 746.75, 0, "cover 3,700 @747.95  +₹3,145", tok("--good-text"), "end");
+
+  var cross = el("line", { y1: m.t, y2: m.t + ph, stroke: tok("--axis"), "stroke-width": 1, opacity: 0 }, svg);
+  var hoverDot = el("circle", { r: 4, fill: tok("--price"), stroke: tok("--surface"), "stroke-width": 2, opacity: 0 }, svg);
+  var tip = document.getElementById("priceTip");
+  var hit = el("rect", { x: m.l, y: m.t, width: pw, height: ph, fill: "transparent" }, svg);
+  function priceMove(evt) {
+    var r = svg.getBoundingClientRect();
+    var t = Math.round(((evt.clientX - r.left) / r.width * W - m.l) / pw * TMAX);
+    t = Math.max(0, Math.min(TMAX, t));
+    var i = idx(t), p = closes[i], v = vwap[i], rt = i * STEP;
+    cross.setAttribute("x1", X(rt)); cross.setAttribute("x2", X(rt)); cross.setAttribute("opacity", 0.7);
+    hoverDot.setAttribute("cx", X(rt)); hoverDot.setAttribute("cy", Y(p)); hoverDot.setAttribute("opacity", 1);
+    tip.style.display = "block";
+    tip.innerHTML = timeLabel(rt) + " &middot; <b>" + fmtINR(p, 2) + "</b> &middot; " +
+      "<b>" + ((p / PREV - 1) * 100).toFixed(2) + "%</b> vs prev close<br>VWAP <b>" + fmtINR(v, 2) + "</b>";
+    var bx = box.getBoundingClientRect();
+    var left = (X(rt) / W) * bx.width + 14;
+    if (left + 210 > bx.width) left -= 235;
+    tip.style.left = left + "px"; tip.style.top = ((Y(p) / H) * bx.height - 14) + "px";
+  }
+  function priceOut() { cross.setAttribute("opacity", 0); hoverDot.setAttribute("opacity", 0); tip.style.display = "none"; }
+  hit.addEventListener("pointermove", priceMove);
+  hit.addEventListener("pointerleave", priceOut);
+
+  // ---------- 3. equity curves (generic illustrative simulation) ----------
+  var planR = [-1, 2, -1, -1, 2, 2, -1, -1, 2, -1, 2, -1, -1, 2, -1, 2, 2, -1, -1, 2,
+               -1, -1, 2, -1, 2, -1, 2, -1, -1, 2, -1, 2, -1, 2, -1, -1, 2, -1, 2, 2];
+  var fadeR = [0.4, 0.4, -1.8, 0.4, 0.4, 0.4, -1.8, 0.4, 0.4, 0.4, -1.8, 0.4, 0.4, 0.4, 0.4, -1.8, -5.5, 0.4, 0.4, 0.4,
+               -1.8, 0.4, 0.4, 0.4, -1.8, 0.4, 0.4, -1.8, 0.4, 0.4, 0.4, -1.8, 0.4, -6.5, 0.4, 0.4, -1.8, 0.4, 0.4, -1.8];
+  function cum(a) { var s = 0; return a.map(function (r) { return +(s += r).toFixed(1); }); }
+  var planC = cum(planR), fadeC = cum(fadeR);
+
+  var W2 = 900, H2 = 330, m2 = { l: 52, r: 132, t: 14, b: 34 };
+  var pw2 = W2 - m2.l - m2.r, ph2 = H2 - m2.t - m2.b;
+  var lo = Math.min(0, Math.min.apply(null, fadeC)) - 2, hi = Math.max.apply(null, planC) + 2;
+  function X2(i) { return m2.l + (i / 39) * pw2; }
+  function Y2(v) { return m2.t + (1 - (v - lo) / (hi - lo)) * ph2; }
+
+  var box2 = document.getElementById("eqBox");
+  box2.innerHTML = "";
+  var svg2 = el("svg", { viewBox: "0 0 " + W2 + " " + H2, role: "img",
+    "aria-label": "Cumulative R over 40 simulated trades: the 45%-win-rate plan finishes at +14R, the 70%-win-rate averaging style at -18.8R" }, box2);
+
+  [-20, -10, 0, 10].forEach(function (v) {
+    el("line", { x1: m2.l, x2: W2 - m2.r, y1: Y2(v), y2: Y2(v),
+      stroke: v === 0 ? tok("--axis") : tok("--grid"), "stroke-width": 1 }, svg2);
+    el("text", { x: m2.l - 8, y: Y2(v) + 4, "text-anchor": "end", "font-size": 11.5,
+      fill: tok("--muted"), style: "font-variant-numeric:tabular-nums" }, svg2).textContent = (v > 0 ? "+" : "") + v + "R";
+  });
+  [1, 10, 20, 30, 40].forEach(function (n) {
+    el("text", { x: X2(n - 1), y: H2 - 12, "text-anchor": "middle", "font-size": 11.5,
+      fill: tok("--muted"), style: "font-variant-numeric:tabular-nums" }, svg2).textContent = n;
+  });
+  el("text", { x: m2.l + pw2 / 2, y: H2 - 0.5, "text-anchor": "middle", "font-size": 11, fill: tok("--muted") }, svg2).textContent = "trade number";
+
+  function pathD2(arr) {
+    var d = "";
+    for (var i = 0; i < arr.length; i++) d += (i ? "L" : "M") + X2(i).toFixed(1) + " " + Y2(arr[i]).toFixed(1);
+    return d;
+  }
+  el("path", { d: pathD2(fadeC), fill: "none", stroke: tok("--fade"), "stroke-width": 2, "stroke-linejoin": "round" }, svg2);
+  el("path", { d: pathD2(planC), fill: "none", stroke: tok("--price"), "stroke-width": 2, "stroke-linejoin": "round" }, svg2);
+
+  el("circle", { cx: X2(39), cy: Y2(planC[39]), r: 4.5, fill: tok("--price"), stroke: tok("--surface"), "stroke-width": 2 }, svg2);
+  el("circle", { cx: X2(39), cy: Y2(fadeC[39]), r: 4.5, fill: tok("--fade"), stroke: tok("--surface"), "stroke-width": 2 }, svg2);
+  el("text", { x: X2(39) + 10, y: Y2(planC[39]) + 4, "font-size": 12.5, "font-weight": 650,
+    fill: tok("--price"), style: "font-variant-numeric:tabular-nums" }, svg2).textContent = "Plan  +" + planC[39] + "R";
+  el("text", { x: X2(39) + 10, y: Y2(fadeC[39]) + 4, "font-size": 12.5, "font-weight": 650,
+    fill: tok("--fade"), style: "font-variant-numeric:tabular-nums" }, svg2).textContent = "Averaging  " + fadeC[39] + "R";
+  el("text", { x: X2(16), y: Y2(fadeC[16]) + 18, "text-anchor": "middle", "font-size": 11,
+    fill: tok("--ink-2") }, svg2).textContent = "one “it has to turn” position: −5.5R";
+  el("text", { x: X2(33), y: Y2(fadeC[33]) + 18, "text-anchor": "middle", "font-size": 11,
+    fill: tok("--ink-2") }, svg2).textContent = "−6.5R";
+
+  var cross2 = el("line", { y1: m2.t, y2: m2.t + ph2, stroke: tok("--axis"), "stroke-width": 1, opacity: 0 }, svg2);
+  var d1 = el("circle", { r: 4, fill: tok("--price"), stroke: tok("--surface"), "stroke-width": 2, opacity: 0 }, svg2);
+  var d2 = el("circle", { r: 4, fill: tok("--fade"), stroke: tok("--surface"), "stroke-width": 2, opacity: 0 }, svg2);
+  var tip2 = document.getElementById("eqTip");
+  var hit2 = el("rect", { x: m2.l, y: m2.t, width: pw2, height: ph2, fill: "transparent" }, svg2);
+  hit2.addEventListener("pointermove", function (evt) {
+    var r = svg2.getBoundingClientRect();
+    var i = Math.round(((evt.clientX - r.left) / r.width * W2 - m2.l) / pw2 * 39);
+    i = Math.max(0, Math.min(39, i));
+    cross2.setAttribute("x1", X2(i)); cross2.setAttribute("x2", X2(i)); cross2.setAttribute("opacity", 0.7);
+    d1.setAttribute("cx", X2(i)); d1.setAttribute("cy", Y2(planC[i])); d1.setAttribute("opacity", 1);
+    d2.setAttribute("cx", X2(i)); d2.setAttribute("cy", Y2(fadeC[i])); d2.setAttribute("opacity", 1);
+    tip2.style.display = "block";
+    tip2.innerHTML = "Trade " + (i + 1) + "<br>Plan <b>" + (planC[i] > 0 ? "+" : "") + planC[i] + "R</b> (this trade " +
+      (planR[i] > 0 ? "+" : "") + planR[i] + "R)<br>Averaging <b>" + (fadeC[i] > 0 ? "+" : "") + fadeC[i] + "R</b> (this trade " +
+      (fadeR[i] > 0 ? "+" : "") + fadeR[i] + "R)";
+    var bx = box2.getBoundingClientRect();
+    var left = (X2(i) / W2) * bx.width + 14;
+    if (left + 200 > bx.width) left -= 225;
+    tip2.style.left = left + "px"; tip2.style.top = ((Y2(planC[i]) / H2) * bx.height - 10) + "px";
+  });
+  hit2.addEventListener("pointerleave", function () {
+    cross2.setAttribute("opacity", 0); d1.setAttribute("opacity", 0); d2.setAttribute("opacity", 0); tip2.style.display = "none";
+  });
+
+  var rows = "<table><tr><th>Trade</th><th>Plan R</th><th>Plan cum</th><th>Averaging R</th><th>Averaging cum</th></tr>";
+  for (var i2 = 0; i2 < 40; i2++) {
+    rows += "<tr><td>" + (i2 + 1) + "</td><td>" + planR[i2] + "</td><td>" + planC[i2] +
+      "</td><td>" + fadeR[i2] + "</td><td>" + fadeC[i2] + "</td></tr>";
+  }
+  document.getElementById("eqTable").innerHTML = rows + "</table>";
+  }
+
+  render();
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+  new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+})();
+</script>

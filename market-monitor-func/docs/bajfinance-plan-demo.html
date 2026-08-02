@@ -1,0 +1,303 @@
+<title>Bajaj Finance, 31 Jul 2026 — real Kite data backtest</title>
+<style>
+  :root {
+    --surface: #fcfcfb; --page: #f9f9f7; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11, 11, 11, 0.10);
+    --price: #2a78d6; --fade: #eb6834; --good: #0ca30c; --good-text: #006300; --critical: #d03b3b; --tile: #f4f3f0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      --surface: #1a1a19; --page: #0d0d0d; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10);
+      --price: #3987e5; --fade: #d95926; --good: #0ca30c; --good-text: #0ca30c; --critical: #e66767; --tile: #222221;
+    }
+  }
+  :root[data-theme="dark"] {
+    --surface: #1a1a19; --page: #0d0d0d; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10);
+    --price: #3987e5; --fade: #d95926; --good: #0ca30c; --good-text: #0ca30c; --critical: #e66767; --tile: #222221;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 40px 20px 72px; }
+  .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+  h1 { font-size: clamp(24px, 4vw, 34px); line-height: 1.15; margin: 0 0 10px; letter-spacing: -0.015em; text-wrap: balance; }
+  .lede { color: var(--ink-2); max-width: 64ch; margin: 0 0 26px; }
+  h2 { font-size: 19px; margin: 0 0 4px; letter-spacing: -0.01em; text-wrap: balance; }
+  .sub { color: var(--ink-2); font-size: 14px; margin: 0 0 14px; max-width: 68ch; }
+  section { margin-top: 44px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .tile .k { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .tile .v { font-size: 21px; font-weight: 650; margin-top: 2px; }
+  .tile .d { font-size: 12px; color: var(--ink-2); margin-top: 1px; }
+  .up { color: var(--good-text); } .dn { color: var(--critical); }
+  .num { font-variant-numeric: tabular-nums; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 16px 10px; position: relative; }
+  .chart-box { position: relative; }
+  .chart-box svg { display: block; width: 100%; height: auto; }
+  svg text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 4px 6px; font-size: 12.5px; color: var(--ink-2); }
+  .legend .it { display: inline-flex; align-items: center; gap: 7px; }
+  .sw { width: 16px; height: 0; border-top: 2.5px solid; border-radius: 2px; }
+  .sw.dash { border-top-style: dashed; }
+  .tri-buy { width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 8px solid var(--good); display: inline-block; }
+  .tri-sell { width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 8px solid var(--critical); display: inline-block; }
+  .tip { position: absolute; pointer-events: none; display: none; z-index: 5; background: var(--surface); border: 1px solid var(--border); border-radius: 7px; box-shadow: 0 4px 14px rgba(0,0,0,0.18); padding: 7px 10px; font-size: 12.5px; line-height: 1.45; white-space: nowrap; }
+  .tip b { font-variant-numeric: tabular-nums; }
+  .ledger { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+  @media (max-width: 640px) { .ledger { grid-template-columns: 1fr; } }
+  .trade { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; border-top: 3px solid var(--critical); }
+  .trade.win { border-top-color: var(--good); }
+  .trade h3 { margin: 0 0 2px; font-size: 15px; }
+  .trade .tag { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .trade table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 10px; }
+  .trade td { padding: 4px 0; border-bottom: 1px solid var(--grid); vertical-align: top; }
+  .trade td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .trade tr:last-child td { border-bottom: 0; }
+  .pnl { font-size: 24px; font-weight: 700; margin-top: 10px; }
+  .pnl small { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+  .note { border-left: 3px solid var(--axis); padding: 2px 0 2px 14px; color: var(--ink-2); font-size: 14px; max-width: 70ch; margin-top: 18px; }
+  .note.warn { border-left-color: var(--critical); }
+  .note.hl { border-left-color: var(--good); }
+  details { margin-top: 12px; font-size: 13px; color: var(--ink-2); }
+  summary { cursor: pointer; font-weight: 600; color: var(--ink-2); }
+  details table { border-collapse: collapse; margin-top: 8px; width: 100%; max-width: 560px; }
+  details th, details td { text-align: right; padding: 3px 10px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+  details th:first-child, details td:first-child { text-align: left; }
+  details th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .scrolltbl { overflow-x: auto; }
+  .foot { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--grid); font-size: 12.5px; color: var(--muted); max-width: 74ch; }
+  .src { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--good-text); background: color-mix(in srgb, var(--good) 12%, transparent); border-radius: 5px; padding: 2px 7px; margin-left: 8px; vertical-align: middle; }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">TRADING_PLAN.md &middot; backtest on real Kite historical data</p>
+  <h1>Bajaj Finance, 31 Jul 2026 <span class="src">✓ live Kite data</span></h1>
+  <p class="lede">
+    A third real session, and a different shape from the other two: this one didn't fade or
+    chop, it just trended up almost the entire day. That makes it the cleanest test yet of
+    Setup&nbsp;A — and the harshest possible day to have been fading it.
+  </p>
+
+  <div class="stats">
+    <div class="tile"><div class="k">Prev close (30 Jul)</div><div class="v num">₹1,053.50</div></div>
+    <div class="tile"><div class="k">Open, 09:15</div><div class="v num">₹1,095.00</div><div class="d num up">+3.9% at the open</div></div>
+    <div class="tile"><div class="k">Day low, 09:15</div><div class="v num">₹1,083.60</div><div class="d">inside the no-trade window</div></div>
+    <div class="tile"><div class="k">Day high, 14:27</div><div class="v num">₹1,151.50</div><div class="d num up">+9.3%</div></div>
+    <div class="tile"><div class="k">Official close</div><div class="v num">₹1,141.20</div><div class="d num up">+87.70 / +8.33%</div></div>
+  </div>
+
+  <section>
+    <h2>1 &middot; The real session, both playbooks marked on it</h2>
+    <p class="sub">
+      Real 3-minute closes. Red: shorting the stock three times over the course of the day
+      because "it's up too much, too fast" — no stop, no cover until forced. Green: the plan's
+      Setup&nbsp;A long, entered on the first genuine pullback-and-breakout after rule&nbsp;7.
+    </p>
+    <div class="card">
+      <div class="legend">
+        <span class="it"><span class="sw" style="border-color:var(--price)"></span>Price (real 3-min closes)</span>
+        <span class="it"><span class="sw dash" style="border-color:var(--muted)"></span>VWAP (volume-weighted, real)</span>
+        <span class="it"><span class="tri-sell"></span>Old habit: averaged shorts</span>
+        <span class="it"><span class="tri-buy"></span>Plan Setup A: long the breakout</span>
+      </div>
+      <div class="chart-box" id="priceBox"></div>
+      <div class="tip" id="priceTip"></div>
+    </div>
+    <p class="note">
+      Rule 7 costs you the fastest leg of this move on purpose: in the first 3 minutes alone the
+      stock ran from ₹1,095 down to ₹1,083.60 and back — an 11-rupee round trip before 09:18. By
+      09:30, when trading is allowed again, ₹1,095→1,114 of the move (roughly two-thirds of the
+      eventual gain) had already happened. That's the trade-off: you miss the cheapest entry, but
+      you also miss the coin-flip whipsaw nobody can read in real time.
+    </p>
+  </section>
+
+  <section>
+    <h2>2 &middot; Setup B check: was there a fade trade here at all?</h2>
+    <p class="sub">
+      Setup B requires a move running into a <em>pre-identified level</em> — a pivot, prior-day
+      high/low, or top-OI strike. Bajaj Finance's previous session (30 Jul) had a high of
+      ₹1,068.00. This stock <strong>opened at ₹1,095</strong> — already ₹27 above that level,
+      before the session even started. There was no level left to fade into.
+    </p>
+    <p class="note hl">
+      Correctly applied, Setup B produces <strong>no trade</strong> here — not a missed
+      opportunity, the right output. A move with no overhead level to reject from is not a fade
+      candidate; it's the definition of "the middle of nowhere" the plan warns about in rule 4B.
+    </p>
+  </section>
+
+  <section>
+    <h2>3 &middot; The ledger, filled at real prices</h2>
+    <p class="sub">₹5,00,000 capital. Every fill below is an actual traded price from the session.</p>
+    <div class="ledger">
+      <div class="trade">
+        <div class="tag">Old habit</div>
+        <h3>Short the "overextended" stock, average, hope</h3>
+        <table>
+          <tr><td>09:30 short 100 @ <span class="num">₹1,114.20</span></td><td>+5.7% already, "too far too fast"</td></tr>
+          <tr><td>11:00 short 100 @ <span class="num">₹1,127.40</span></td><td>average #1</td></tr>
+          <tr><td>12:30 short 100 @ <span class="num">₹1,134.70</span></td><td>average #2, "it cannot keep going"</td></tr>
+          <tr><td>15:27 cover 300 @ <span class="num">₹1,141.00</span></td><td>forced square-off</td></tr>
+          <tr><td>Avg entry <span class="num">₹1,125.43</span> &middot; no stop</td><td>risk: unbounded</td></tr>
+        </table>
+        <div class="pnl dn num">−₹4,671 <small>a real loss — this time the stock never gave it back</small></div>
+      </div>
+      <div class="trade win">
+        <div class="tag">Plan &middot; Setup A (long)</div>
+        <h3>Buy the breakout, not the open</h3>
+        <table>
+          <tr><td>09:15–09:30 no trading</td><td>rule 7</td></tr>
+          <tr><td>10:48 buy 540 @ <span class="num">₹1,128.20</span></td><td>breaks the 10:00 pullback high</td></tr>
+          <tr><td>Stop <span class="num">₹1,119.00</span> (below the pullback)</td><td>risk ₹9.20/sh = ₹4,968</td></tr>
+          <tr><td>13:57 sell 540 @ <span class="num">₹1,146.60</span></td><td>+2R target</td></tr>
+          <tr><td>Worst case if wrong</td><td class="num">−₹4,968 (−1R)</td></tr>
+        </table>
+        <div class="pnl up num">+₹9,936 <small>= +2.00R, clean textbook fill</small></div>
+      </div>
+    </div>
+    <p class="note warn">
+      The short's final loss (−₹4,671) understates what it felt like to hold. At the 14:27 high,
+      that averaged short was carrying an unrealized loss of roughly <strong>₹7,820</strong> —
+      over 1.5&times; the plan's entire per-trade risk budget — for most of the afternoon. Unlike
+      the Hyundai session, this stock never pulled back far enough to bail it out. Same mechanism,
+      different ending: this is the "huge loss" day, not the "got lucky" day.
+    </p>
+    <p class="note">
+      The plan trade also didn't need the day's exact high to work: price kept running to ₹1,150
+      by 14:24 before the pullback, so a trader trailing stops below higher lows past 1.5R (rule
+      4A) could reasonably have banked closer to +2.4R. +2.00R is what the stated minimum rule
+      guarantees, not the ceiling.
+    </p>
+  </section>
+
+  <div class="foot">
+    All prices above are real 3-minute OHLC candles for NSE:BAJFINANCE on 31 Jul 2026, pulled
+    directly from your authenticated Kite session (instrument 81153). Day OHLC: open ₹1,095.00,
+    high ₹1,151.50, low ₹1,083.60, close ₹1,141.20. Prev close ₹1,053.50 (30 Jul day candle).
+    VWAP is computed from real typical-price × volume across all 125 candles. The old-habit and
+    plan fills are real closes from that series, chosen at the points the plan's rules would
+    actually have triggered; stop levels are the invalidation prices a trader would have set, not
+    traded prints. Not investment advice.
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  function tok(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+  var NS = "http://www.w3.org/2000/svg";
+  function el(name, attrs, parent) {
+    var e = document.createElementNS(NS, name);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function fmtINR(v, dp) { return "₹" + v.toLocaleString("en-IN", { minimumFractionDigits: dp || 0, maximumFractionDigits: dp || 0 }); }
+
+  function render() {
+  var PREV = 1053.50;
+  var STEP = 3, N = 125, TMAX = (N - 1) * STEP;
+  var closes = [1094,1096.6,1101.5,1106.1,1114.8,1114.2,1118.6,1117.9,1118,1119.3,1117.6,1119.2,1123.6,1122.6,1126.3,1127,1123.8,1123.6,1124.2,1123,1122.6,1122.7,1123.8,1119.8,1122.6,1120.8,1122.8,1121.5,1120.4,1123,1122.7,1128.2,1124.7,1126,1127.5,1127.4,1126.1,1124.8,1124.2,1126.3,1126.5,1126.8,1127.5,1134.6,1134.3,1133,1132.9,1132.5,1133.4,1130.9,1130.5,1129,1129,1131.1,1131.7,1131.7,1129.5,1131.1,1132.1,1135,1133.1,1133.6,1133.5,1133.9,1135.1,1134.7,1136,1136.9,1137.5,1137.7,1139.6,1138.2,1137.1,1138.8,1140,1139.2,1140.2,1141.5,1142.5,1143.4,1143,1141.6,1142.3,1142.1,1142.3,1142.9,1144.5,1143.6,1142.3,1142.6,1143,1145.5,1145.4,1145.9,1148.8,1148.2,1147.4,1146.8,1146.5,1148.5,1147.9,1147.5,1147.3,1150,1149.2,1145.4,1145.1,1144.7,1144.5,1141,1140,1140.9,1140.1,1139.7,1139,1141.7,1143.6,1142.8,1143.9,1141.1,1138.5,1139,1139.9,1140.4,1141];
+  var vwap = [1092.17,1092.62,1093.72,1095.04,1096.38,1097.59,1098.81,1100.01,1100.75,1101.53,1102.12,1102.53,1102.99,1103.29,1103.89,1104.45,1104.81,1105.06,1105.34,1105.52,1105.72,1106.04,1106.16,1106.3,1106.62,1106.77,1107.07,1107.32,1107.44,1107.68,1107.75,1108.23,1108.34,1108.44,1108.57,1108.67,1108.74,1108.9,1108.99,1109.1,1109.17,1109.28,1109.52,1110.99,1111.31,1111.56,1111.7,1111.85,1112.01,1112.12,1112.23,1112.39,1112.48,1112.6,1112.87,1112.93,1113,1113.05,1113.11,1113.38,1113.47,1113.52,1113.59,1113.65,1113.74,1113.82,1113.91,1114.05,1114.16,1114.33,1114.49,1114.72,1114.84,1115.06,1115.18,1115.28,1115.39,1115.53,1115.65,1115.85,1116.1,1116.25,1116.32,1116.44,1116.52,1116.64,1116.83,1116.99,1117.08,1117.2,1117.33,1117.58,1117.8,1117.96,1118.4,1118.69,1118.87,1118.98,1119.17,1119.36,1119.47,1119.62,1119.78,1119.94,1120.39,1120.54,1120.7,1120.8,1120.92,1121.15,1121.36,1121.46,1121.57,1121.66,1121.86,1122.05,1122.37,1122.55,1122.72,1122.91,1123.13,1123.39,1123.63,1123.88,1124.01];
+
+  function idx(t) { return Math.max(0, Math.min(N - 1, Math.round(t / STEP))); }
+
+  var W = 900, H = 380, m = { l: 56, r: 16, t: 18, b: 34 };
+  var pw = W - m.l - m.r, ph = H - m.t - m.b;
+  var yMin = 1080, yMax = 1156;
+  function X(t) { return m.l + (t / TMAX) * pw; }
+  function Y(p) { return m.t + (1 - (p - yMin) / (yMax - yMin)) * ph; }
+  function timeLabel(t) {
+    var mins = 9 * 60 + 15 + t, h = Math.floor(mins / 60), mm = mins % 60;
+    return (h < 10 ? "0" : "") + h + ":" + (mm < 10 ? "0" : "") + mm;
+  }
+
+  var box = document.getElementById("priceBox");
+  box.innerHTML = "";
+  var svg = el("svg", { viewBox: "0 0 " + W + " " + H, role: "img",
+    "aria-label": "Bajaj Finance real intraday price 31 July 2026 with averaged shorts and the plan's Setup A long marked" }, box);
+
+  el("rect", { x: X(0), y: m.t, width: (X(15) - X(0)), height: ph, fill: tok("--muted"), opacity: 0.16 }, svg);
+
+  [1085, 1105, 1125, 1145].forEach(function (p) {
+    el("line", { x1: m.l, x2: W - m.r, y1: Y(p), y2: Y(p), stroke: tok("--grid"), "stroke-width": 1 }, svg);
+    el("text", { x: m.l - 8, y: Y(p) + 4, "text-anchor": "end", "font-size": 11.5,
+      fill: tok("--muted"), style: "font-variant-numeric:tabular-nums" }, svg).textContent = p.toLocaleString("en-IN");
+  });
+  [0, 60, 120, 180, 240, 300, TMAX].forEach(function (t) {
+    el("text", { x: X(t), y: H - 12, "text-anchor": t === 0 ? "start" : (t === TMAX ? "end" : "middle"),
+      "font-size": 11.5, fill: tok("--muted"), style: "font-variant-numeric:tabular-nums" }, svg).textContent = timeLabel(t);
+  });
+  el("line", { x1: m.l, x2: W - m.r, y1: m.t + ph, y2: m.t + ph, stroke: tok("--axis"), "stroke-width": 1 }, svg);
+
+  el("line", { x1: X(45), x2: W - m.r, y1: Y(1127), y2: Y(1127), stroke: tok("--ink-2"),
+    "stroke-width": 1.3, opacity: 0.7, "stroke-dasharray": "2 4" }, svg);
+  el("text", { x: W - m.r - 4, y: Y(1127) + 14, "text-anchor": "end", "font-size": 11, fill: tok("--ink-2") }, svg).textContent = "₹1,127 pullback high — breakout trigger";
+
+  function pathD(arr) {
+    var d = "";
+    for (var i = 0; i < N; i++) { var t = i * STEP; d += (i ? "L" : "M") + X(t).toFixed(1) + " " + Y(arr[i]).toFixed(1); }
+    return d;
+  }
+  el("path", { d: pathD(vwap), fill: "none", stroke: tok("--muted"), "stroke-width": 1.6, "stroke-dasharray": "5 4", opacity: 0.9 }, svg);
+  el("path", { d: pathD(closes), fill: "none", stroke: tok("--price"), "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+
+  function tri(t, p, dir, color) {
+    var x = X(t), y = dir === "down" ? Y(p) - 9 : Y(p) + 9;
+    var d = dir === "down"
+      ? "M" + (x - 6.5) + " " + (y - 10) + " L" + (x + 6.5) + " " + (y - 10) + " L" + x + " " + y + " Z"
+      : "M" + (x - 6.5) + " " + (y + 10) + " L" + (x + 6.5) + " " + (y + 10) + " L" + x + " " + y + " Z";
+    el("path", { d: d, fill: color, stroke: tok("--surface"), "stroke-width": 2 }, svg);
+  }
+  function dot(t, p, color) { el("circle", { cx: X(t), cy: Y(p), r: 5.5, fill: color, stroke: tok("--surface"), "stroke-width": 2 }, svg); }
+  function label(t, p, dy, txt, color, anchor) {
+    el("text", { x: X(t), y: Y(p) + dy, "text-anchor": anchor || "middle", "font-size": 11.5, "font-weight": 600,
+      fill: color, stroke: tok("--surface"), "stroke-width": 3.5, "paint-order": "stroke", "stroke-linejoin": "round" }, svg).textContent = txt;
+  }
+
+  label(6, 1082.5, -6, "✕ 1,095→1,083.60→1,114 swing — inside rule 7", tok("--muted"), "start");
+
+  tri(93, 1128.20, "up", tok("--good")); label(93, 1128.20, -24, "buy 540 @1,128.20", tok("--good-text"));
+  el("line", { x1: X(72), x2: X(93), y1: Y(1119), y2: Y(1119), stroke: tok("--good"), "stroke-width": 1.5, "stroke-dasharray": "5 4", opacity: 0.9 }, svg);
+  label(96, 1119, 4, "stop ₹1,119", tok("--good-text"), "start");
+  dot(282, 1146.60, tok("--good"));
+  label(286, 1150.5, 0, "sell +2.00R  +₹9,936", tok("--good-text"), "start");
+
+  tri(15, 1114.20, "down", tok("--critical")); label(9, 1114.20, 30, "① short @1,114.20", tok("--critical"), "start");
+  tri(105, 1127.40, "down", tok("--critical")); label(111, 1127.40, 30, "② average @1,127.40", tok("--critical"), "start");
+  tri(195, 1134.70, "down", tok("--critical")); label(201, 1134.70, -16, "③ average @1,134.70", tok("--critical"), "start");
+  dot(TMAX, 1141.00, tok("--critical"));
+  label(TMAX - 6, 1090, 0, "cover 300 @1,141.00  −₹4,671", tok("--critical"), "end");
+
+  var cross = el("line", { y1: m.t, y2: m.t + ph, stroke: tok("--axis"), "stroke-width": 1, opacity: 0 }, svg);
+  var hoverDot = el("circle", { r: 4, fill: tok("--price"), stroke: tok("--surface"), "stroke-width": 2, opacity: 0 }, svg);
+  var tip = document.getElementById("priceTip");
+  var hit = el("rect", { x: m.l, y: m.t, width: pw, height: ph, fill: "transparent" }, svg);
+  function priceMove(evt) {
+    var r = svg.getBoundingClientRect();
+    var t = Math.round(((evt.clientX - r.left) / r.width * W - m.l) / pw * TMAX);
+    t = Math.max(0, Math.min(TMAX, t));
+    var i = idx(t), p = closes[i], v = vwap[i], rt = i * STEP;
+    cross.setAttribute("x1", X(rt)); cross.setAttribute("x2", X(rt)); cross.setAttribute("opacity", 0.7);
+    hoverDot.setAttribute("cx", X(rt)); hoverDot.setAttribute("cy", Y(p)); hoverDot.setAttribute("opacity", 1);
+    tip.style.display = "block";
+    tip.innerHTML = timeLabel(rt) + " &middot; <b>" + fmtINR(p, 2) + "</b> &middot; " +
+      "<b>" + ((p / PREV - 1) * 100).toFixed(2) + "%</b> vs prev close<br>VWAP <b>" + fmtINR(v, 2) + "</b>";
+    var bx = box.getBoundingClientRect();
+    var left = (X(rt) / W) * bx.width + 14;
+    if (left + 210 > bx.width) left -= 235;
+    tip.style.left = left + "px"; tip.style.top = ((Y(p) / H) * bx.height - 14) + "px";
+  }
+  function priceOut() { cross.setAttribute("opacity", 0); hoverDot.setAttribute("opacity", 0); tip.style.display = "none"; }
+  hit.addEventListener("pointermove", priceMove);
+  hit.addEventListener("pointerleave", priceOut);
+  }
+
+  render();
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+  new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+})();
+</script>
