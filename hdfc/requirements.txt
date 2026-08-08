@@ -1,0 +1,7 @@
+fastmcp>=3.4
+mcp>=1.24,<2.0
+httpx[http2]>=0.28
+websockets>=13
+protobuf>=5
+python-dotenv>=1.0
+uvloop>=0.19; platform_system != 'Windows'

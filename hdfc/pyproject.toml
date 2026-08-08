@@ -1,0 +1,24 @@
+[project]
+name = "hdfc-investright-mcp"
+version = "0.1.0"
+description = "MCP server for HDFC Securities InvestRight Open API (orders, portfolio, live quotes + options Greeks)"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=3.4",
+    "mcp>=1.24,<2.0",
+    "httpx[http2]>=0.28",
+    "websockets>=13",
+    "protobuf>=5",
+    "python-dotenv>=1.0",
+    "uvloop>=0.19; platform_system != 'Windows'",
+]
+
+[project.scripts]
+hdfc-investright-mcp = "hdfc_mcp.server:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

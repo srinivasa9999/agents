@@ -1,0 +1,10 @@
+{
+  "name": "options-greeks",
+  "description": "Standalone Black-Scholes-Merton option pricing, implied volatility, and Greeks calculator. No account access, no MCP servers, no network calls.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Local developer"
+  },
+  "keywords": ["options", "greeks", "black-scholes", "implied-volatility", "delta", "gamma", "theta", "vega", "rho"],
+  "license": "MIT"
+}

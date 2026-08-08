@@ -1,0 +1,26 @@
+{
+  "name": "kite-research-agent",
+  "version": "0.2.0+codex.20260808073728",
+  "description": "Read-only Zerodha Kite research assistant with Kite MCP quotes and derived option Greeks.",
+  "author": {
+    "name": "Local developer"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Kite Research Agent",
+    "shortDescription": "Research your Kite portfolio and estimate option Greeks.",
+    "longDescription": "A read-only research assistant for Kite holdings, positions, orders, quotes, historical market data, and clearly labelled model-derived option Greeks.",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive"
+    ],
+    "defaultPrompt": [
+      "Review my Kite holdings and identify concentration risks.",
+      "Compare my open positions with current market prices.",
+      "Get the latest quote and recent trend for NSE:INFY.",
+      "Estimate implied volatility and Greeks for an NFO option using current option and underlying quotes."
+    ]
+  },
+  "mcpServers": "./.mcp.json"
+}
